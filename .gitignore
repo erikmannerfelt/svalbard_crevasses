@@ -1,2 +1,6 @@
 cache/
 crevasses_svalbard.qgz
+__pycache__/
+input/
+output
+scripts/
