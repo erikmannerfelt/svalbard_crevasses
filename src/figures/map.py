@@ -33,6 +33,9 @@ def plot_crevasse_trend_map(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(10, 10))
+
+    ax.set_ylim(8480000, 8970000)
+    ax.set_xlim(400000, 848000)
     land.plot(ax=ax, color="#e6e6e1", edgecolor="#aaaaa5", linewidth=0.25)
     cmap = "PuOr_r"
     norm = TwoSlopeNorm(vmin=-limit, vcenter=0, vmax=limit)
@@ -49,18 +52,21 @@ def plot_crevasse_trend_map(
     surging.geometry.centroid.plot(
         ax=ax,
         marker="*",
-        markersize=35,
+        markersize=150,
         color="#ffd92f",
         edgecolor="#222222",
         linewidth=0.5,
         zorder=3,
+        label="Surges 2017-2025 (Harcourt et al. 2026)",
     )
     sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
     sm.set_array([])
     fig.colorbar(sm, ax=ax, fraction=0.035, pad=0.02, label="Crevasse area trend (km²/year)")
     ax.set_axis_off()
+    print(ax.get_ylim(), ax.get_xlim())
+    ax.legend(loc="lower right")
     fig.tight_layout()
-    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    fig.savefig(output_path, dpi=400, bbox_inches="tight")
     plt.close(fig)
 
 

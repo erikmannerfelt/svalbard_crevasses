@@ -47,14 +47,20 @@ def select_glaciers(trends: pd.DataFrame, min_area_km2: float, glacier: str | No
 
 
 def sample_vote_fraction(geometry, raster_path: Path) -> tuple[np.ndarray, np.ndarray, rasterio.Affine]:
-    with rasterio.open(raster_path) as raster:
-        window = from_bounds(*geometry.bounds, transform=raster.transform).round_offsets().round_lengths()
-        values = raster.read(3, window=window, boundless=True)
-        transform = raster.window_transform(window)
-        inside = geometry_mask(
-            [geometry], out_shape=values.shape, transform=transform, invert=True
-        )
-    return values.astype(float) / 255, inside, transform
+    if isinstance(raster_path, tuple):
+        image, transform = raster_path
+    else:
+        with rasterio.open(raster_path) as raster:
+            window = from_bounds(*geometry.bounds, transform=raster.transform).round_offsets().round_lengths()
+            image = raster.read(1, window=window).astype(float) / 255
+            transform = raster.window_transform(window)
+            inside = geometry_mask([geometry], out_shape=image.shape, transform=transform, invert=True)
+            return image, inside, transform
+    window = from_bounds(*geometry.bounds, transform=transform).round_offsets().round_lengths()
+    image = image[window.row_off:window.row_off + window.height, window.col_off:window.col_off + window.width]
+    transform = rasterio.windows.transform(window, transform)
+    inside = geometry_mask([geometry], out_shape=image.shape, transform=transform, invert=True)
+    return image, inside, transform
 
 
 def model_coverage(data: pd.DataFrame, anlys_id: int) -> pd.DataFrame:
@@ -69,6 +75,7 @@ def write_figure(
     geometry,
     input_dir: Path,
     output_dir: Path,
+    vote_images: dict,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     annual = model_data.groupby("year").crevassed_area_km2.agg(
@@ -84,7 +91,7 @@ def write_figure(
     fig = plt.figure(figsize=(9, 8))
     grid = fig.add_gridspec(4, 3, height_ratios=[1.05, 1, 1, 1], hspace=0.35, wspace=0.18)
     trend_ax = fig.add_subplot(grid[0, :])
-    y_max = min(100, max(1, 1.1 * annual["high"].max()))
+    y_max = max(1, 1.1 * annual["high"].max())
     trend_ax.fill_between(annual.year, annual["low"], annual["high"], color="#d98c8c", alpha=0.35, linewidth=0)
     trend_ax.plot(annual.year, annual["median"], color="#963b3b", marker="o", markersize=3)
     trend_ax.set_xlim(2016.7, 2025.3)
@@ -97,7 +104,7 @@ def write_figure(
     for index, year in enumerate(YEARS):
         ax = fig.add_subplot(grid[1 + index // 3, index % 3])
         image, inside, transform = sample_vote_fraction(
-            geometry, input_dir / f"crevasse_ensemble_metrics_{year}.tif"
+            geometry, vote_images[year]
         )
         display = np.ma.masked_where(~inside, image)
         height, width = display.shape
@@ -135,14 +142,25 @@ def run(
     annual_model = pd.read_feather(output_root.parent.parent / "annual_model.arrow")
     selected = select_glaciers(trends, min_area_km2, glacier)
     polygons = load_rgi_polygons(input_dir / "RGI_V7_Surge_Database.zip")
+    vote_images = {}
+    for year in YEARS:
+        for _, row in selected.iterrows():
+            geometry = polygons.loc[polygons.rgi_id == row.rgi_id].to_crs("EPSG:32633").geometry.iloc[0]
+            raster_path = output_root.parent.parent / "vote_fractions" / f"crevasse_vote_fraction_{year}.tif"
+            with rasterio.open(raster_path) as raster:
+                window = from_bounds(*geometry.bounds, transform=raster.transform).round_offsets().round_lengths()
+                cropped = raster.read(1, window=window).astype(float) / 255
+                vote_images[(year, row.rgi_id)] = (cropped, raster.window_transform(window))
     output_rows = []
     for _, row in selected.iterrows():
+        print(row.glac_name)
         polygon = polygons[polygons.rgi_id == row.rgi_id]
         if len(polygon) != 1:
             raise ValueError(f"Expected one RGI polygon for {row.rgi_id}, found {len(polygon)}")
         polygon = polygon.to_crs("EPSG:32633")
         output_dir = output_root / slugify(row.glac_name, row.rgi_id)
-        write_figure(row, model_coverage(annual_model, row.anlys_id), polygon.geometry.iloc[0], input_dir, output_dir)
+        glacier_votes = {year: vote_images[(year, row.rgi_id)] for year in YEARS}
+        write_figure(row, model_coverage(annual_model, row.anlys_id), polygon.geometry.iloc[0], input_dir, output_dir, glacier_votes)
         output_rows.append({
             "rgi_id": row.rgi_id,
             "anlys_id": row.anlys_id,

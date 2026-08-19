@@ -1,14 +1,15 @@
-"""Build uncertainty-aware crevasse trends from the GEE CSV exports."""
+"""Build uncertainty-aware crevasse trends from the GEE raster exports."""
 
 from __future__ import annotations
 
 import argparse
-import zipfile
 from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+
+from src.predictions import aggregate_model_areas
 
 YEARS = np.arange(2017, 2026)
 N_MODELS = 30
@@ -61,20 +62,10 @@ def _surge_overlaps(term_value, onset_value, min_year=START_YEAR, max_year=END_Y
     return False
 
 
-def read_predictions(input_dir: Path) -> pd.DataFrame:
-    frames = []
-    for path in sorted(input_dir.glob("crevasse_model_polygon_positive_fraction_*.csv")):
-        year = int(path.stem.rsplit("_", 1)[-1])
-        frame = pd.read_csv(path).drop(columns=["Unnamed: 0"], errors="ignore")
-        frame["year"] = year
-        frames.append(frame)
-    if not frames:
-        raise FileNotFoundError(f"No prediction CSVs found in {input_dir}")
-    data = pd.concat(frames, ignore_index=True)
-    required = {"year", "model_id", "anlys_id", "glac_id", "positive_area_m2", "valid_area_m2"}
-    missing = required - set(data.columns)
-    if missing:
-        raise ValueError(f"Missing prediction columns: {sorted(missing)}")
+def read_predictions(
+    input_dir: Path, surge: gpd.GeoDataFrame, vote_fraction_dir: Path
+) -> pd.DataFrame:
+    data = pd.DataFrame(aggregate_model_areas(input_dir, surge, YEARS, vote_fraction_dir))
     expected = len(YEARS) * N_MODELS
     counts = data.groupby("anlys_id").size()
     if len(data.anlys_id.unique()) != 1583 or counts.ne(expected).any():
@@ -89,8 +80,8 @@ def read_predictions(input_dir: Path) -> pd.DataFrame:
 def read_surge_database(input_path: Path) -> pd.DataFrame:
     member = "RGI_V7_Surge_Database/RGI2000-v7.0-G-07_svalbard_jan_mayen_Surge_Database.shp"
     shp = f"zip://{input_path.resolve()}!{member}"
-    columns = ["rgi_id", "glims_id", "anlys_id", "glac_name", "area_km2", "S_Onset", "S_Term", "term_type"]
-    surge = gpd.read_file(shp, ignore_geometry=True)[columns]
+    columns = ["rgi_id", "glims_id", "anlys_id", "glac_name", "area_km2", "S_Onset", "S_Term", "term_type", "geometry"]
+    surge = gpd.read_file(shp)[columns]
     for rgi_id, overrides in SURGE_OVERRIDES.items():
         idx = surge.rgi_id == rgi_id
         for key, value in overrides.items():
@@ -189,8 +180,8 @@ def representative_glaciers(summaries: pd.DataFrame) -> pd.DataFrame:
 def run(input_dir=Path("input"), output_dir=Path("output")) -> dict[str, pd.DataFrame]:
     input_dir, output_dir = Path(input_dir), Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    data = read_predictions(input_dir)
     metadata = read_surge_database(input_dir / "RGI_V7_Surge_Database.zip")
+    data = read_predictions(input_dir, metadata, output_dir / "vote_fractions")
     data, metadata = attach_metadata(data, metadata)
     model_trends, glacier_trends = fit_trends(data)
     annual, regional_model, regional_summary = regional_trends(data, metadata)
