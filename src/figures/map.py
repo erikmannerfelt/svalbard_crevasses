@@ -54,24 +54,28 @@ def classify_surge_periods(glaciers: gpd.GeoDataFrame, pre_years: int = PRE_YEAR
     return glaciers
 
 
-def add_agreement_matrix(ax, glaciers: gpd.GeoDataFrame, cmap: str) -> None:
-    """Add a compact count and trend-magnitude agreement matrix."""
+def add_agreement_matrix(ax, glaciers: gpd.GeoDataFrame, model_trends: pd.DataFrame, cmap: str) -> None:
+    """Add a compact trend-rate matrix with significant-glacier counts."""
     glaciers = glaciers.copy()
     glaciers["trend_class"] = "uncertain"
     glaciers.loc[glaciers["slope_km2_yr_high"] < 0, "trend_class"] = "negative"
     glaciers.loc[glaciers["slope_km2_yr_low"] > 0, "trend_class"] = "positive"
-    periods = [f"Surges\n{int(YEARS[0]) - PRE_YEARS}-{MIDPOINT_YEAR - 1}", f"Surges\n{MIDPOINT_YEAR}-{END_YEAR}", "No recorded\nsurge"]
+    glaciers["trend_direction"] = glaciers["slope_km2_yr"].ge(0).map({True: "positive", False: "negative"})
+    periods = [f"Surges\n{int(YEARS[0]) - PRE_YEARS}–{MIDPOINT_YEAR - 1}", f"Surges\n{MIDPOINT_YEAR}–{END_YEAR}", f"No recorded\nsurge\n{int(YEARS[0]) - PRE_YEARS}–{END_YEAR}"]
     glaciers["surge_class"] = periods[-1]
     glaciers.loc[glaciers["surge_before_midpoint"], "surge_class"] = periods[0]
     glaciers.loc[glaciers["surge_after_midpoint"], "surge_class"] = periods[1]
 
-    classified = glaciers[glaciers["trend_class"] != "uncertain"].copy()
-    classified["absolute_trend"] = classified["slope_km2_yr"].abs()
-    total_absolute_trend = classified["absolute_trend"].sum()
+    classified = glaciers.copy()
     directions = ["negative", "positive"]
     colormap = plt.get_cmap(cmap)
-    max_share = 100 * classified.groupby("surge_class")["absolute_trend"].sum().div(total_absolute_trend).max()
-    share_norm = TwoSlopeNorm(vmin=-max_share, vcenter=0, vmax=max_share if max_share else 1)
+    model_trends = model_trends.merge(
+        classified[["rgi_id", "surge_class", "trend_direction"]], on="rgi_id", how="inner", validate="many_to_one"
+    )
+    cell_rates = model_trends.groupby(["model_id", "surge_class", "trend_direction"])["slope_km2_yr"].sum()
+    median_rates = cell_rates.groupby(["surge_class", "trend_direction"]).median()
+    max_rate = median_rates.abs().max()
+    rate_norm = TwoSlopeNorm(vmin=-max_rate, vcenter=0, vmax=max_rate if max_rate else 1)
 
     ax.set_xlim(0, 3)
     ax.set_ylim(0, 4.05)
@@ -82,18 +86,27 @@ def add_agreement_matrix(ax, glaciers: gpd.GeoDataFrame, cmap: str) -> None:
 
     for row, period in enumerate(periods):
         y = 0.4 * 3 - row * 0.60
-        ax.text(0.47, y + 0.30, period, fontsize=7, ha="center", va="center")
+        # Trick to first apply the patheffect and then the black text.
+        for i in range(2):
+            ax.text(0.47, y + 0.30, period, fontsize=7, ha="center", va="center", path_effects=[matplotlib.patheffects.withStroke(foreground="white", linewidth=7)] if i == 0 else None, color="white" if i == 0 else "black")
         for column, direction in enumerate(directions, start=1):
-            subset = classified[(classified["surge_class"] == period) & (classified["trend_class"] == direction)]
-            count = len(subset)
-            share = 100 * subset["absolute_trend"].sum() / total_absolute_trend if total_absolute_trend else 0
-            # Keep even small nonzero shares visibly on their directional side
+            subset = classified[(classified["surge_class"] == period) & (classified["trend_direction"] == direction)]
+            count = (subset["trend_class"] == direction).sum()
+            cell = (period, direction)
+            rate = median_rates.get(cell, 0)
+            cell_model_rates = cell_rates.xs(cell, level=["surge_class", "trend_direction"], drop_level=True) if cell in median_rates.index else None
+            if cell_model_rates is not None:
+                interval = cell_model_rates.quantile([0.025, 0.975])
+                uncertainty = max(rate - interval.iloc[0], interval.iloc[1] - rate)
+            else:
+                uncertainty = 0
+            # Keep even small nonzero rates visibly on their directional side
             # of the diverging colormap rather than at its white midpoint.
-            minimum_visible_share = 0.03 * max_share
-            signed_share = max(share, minimum_visible_share) if direction == "positive" else -max(share, minimum_visible_share)
-            ax.add_patch(Rectangle((column, y), 1, 0.60, facecolor=colormap(share_norm(signed_share)), edgecolor="#888888", linewidth=0.7))
-            ax.text(column + 0.5, y + 0.37, f"n = {count}", fontsize=8, fontweight="bold", ha="center", va="center", path_effects=[matplotlib.patheffects.withStroke(foreground="#444", linewidth=1.5)], color="white")
-            ax.text(column + 0.5, y + 0.14, f"{share:.1f}%", fontsize=8, ha="center", va="center", path_effects=[matplotlib.patheffects.withStroke(foreground="#444", linewidth=1.5)], color="white")
+            minimum_visible_rate = 0.03 * max_rate
+            signed_rate = max(rate, minimum_visible_rate) if direction == "positive" else min(rate, -minimum_visible_rate)
+            ax.add_patch(Rectangle((column, y), 1, 0.60, facecolor=colormap(rate_norm(signed_rate)), edgecolor="#888888", linewidth=0.7))
+            ax.text(column + 0.5, y + 0.37, f"{rate:+.0f} ± {uncertainty:.0f}", fontsize=7.5, fontweight="bold", ha="center", va="center", path_effects=[matplotlib.patheffects.withStroke(foreground="#444", linewidth=1.5)], color="white")
+            ax.text(column + 0.5, y + 0.14, f"(n$_{{sig}}$ = {count})", fontsize=6.5, ha="center", va="center", path_effects=[matplotlib.patheffects.withStroke(foreground="#444", linewidth=1.5)], color="white")
 
 
 
@@ -111,8 +124,6 @@ def plot_crevasse_trend_map(
         # Remove Kong Karls Land because it's in the way of the colorbar
         shapely.geometry.box(730000, 8740000, 900000, 8820000)
     )
-
-    print(land.iloc[0])
 
     if glaciers.crs != land.crs:
         glaciers = glaciers.to_crs(land.crs)
@@ -137,26 +148,24 @@ def plot_crevasse_trend_map(
     later_surges = glaciers[glaciers["surge_after_midpoint"]].copy()
     later_surges.geometry.centroid.plot(
         ax=ax,
-        # marker="*",
         marker="o",
-        markersize=40,
+        markersize=30,
         color="#ffd92f",
         edgecolor="#222222",
         linewidth=0.5,
         zorder=3,
-        label=f"Surges {MIDPOINT_YEAR}-{END_YEAR}",
+        label=f"Surges {MIDPOINT_YEAR}–{END_YEAR}",
     )
     earlier_surges = glaciers[glaciers["surge_before_midpoint"]].copy()
     earlier_surges.geometry.centroid.plot(
         ax=ax,
-        # marker="*",
         marker="o",
-        markersize=40,
+        markersize=30,
         color="#377eb8",
         edgecolor="#222222",
         linewidth=0.5,
         zorder=3,
-        label=f"Surges {int(YEARS[0]) - pre_years}-{MIDPOINT_YEAR - 1}",
+        label=f"Surges {int(YEARS[0]) - pre_years}–{MIDPOINT_YEAR - 1}",
     )
 
     for glacier_name in src.figures.crevasse_timeseries.GLACIERS:
@@ -174,8 +183,9 @@ def plot_crevasse_trend_map(
     fig.colorbar(sm, cax=colorbar_ax, label="Crevasse area trend (km² year$^{-1}$)")
     ax.set_axis_off()
     ax.legend(loc="lower left", bbox_to_anchor=(0.02, 0.02), fontsize=8, framealpha=0.9)
-    agreement_ax = ax.inset_axes([0.67, 0, 0.33, 0.60])
-    add_agreement_matrix(agreement_ax, glaciers, cmap)
+    agreement_ax = ax.inset_axes([0.65, 0, 0.35, 0.60])
+    model_trends = pd.read_feather(trends_path.with_name("glacier_model_trends.arrow"))
+    add_agreement_matrix(agreement_ax, glaciers, model_trends, cmap)
     fig.savefig(output_path, dpi=400, bbox_inches="tight")
     plt.close(fig)
 

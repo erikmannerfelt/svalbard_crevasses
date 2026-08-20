@@ -11,7 +11,8 @@ import matplotlib.ticker
 import numpy as np
 import pandas as pd
 import rasterio
-from matplotlib.patches import ConnectionPatch, Rectangle
+from matplotlib.lines import Line2D
+from matplotlib.patches import ConnectionPatch
 from rasterio.features import geometry_mask
 from rasterio.transform import array_bounds
 from rasterio.windows import from_bounds
@@ -179,9 +180,11 @@ def make_figure(values: pd.DataFrame, arnesen_maps: dict, output_path: Path) -> 
                 coordsA=arnesen_ax.transAxes,
                 xyB=target_corner,
                 coordsB=target_ax.transAxes,
-                color="#777777",
-                linewidth=0.6,
+                color="k",
+                linewidth=0.8,
                 clip_on=False,
+                arrowstyle='-', 
+                # connectionstyle='arc3', 
                 zorder=0,
             )
         )
@@ -196,14 +199,12 @@ def make_figure(values: pd.DataFrame, arnesen_maps: dict, output_path: Path) -> 
     map_right = max(position.x1 for position in map_positions)
     map_top = max(position.y1 for position in map_positions)
     fig.add_artist(
-        Rectangle(
-            (map_left, map_bottom),
-            map_right - map_left,
-            map_top - map_bottom,
+        Line2D(
+            [map_left, map_right, map_right, map_left],
+            [map_bottom, map_bottom, map_top, map_top],
             transform=fig.transFigure,
-            fill=False,
-            edgecolor="#333333",
-            linewidth=0.6,
+            color="k",
+            linewidth=0.8,
             clip_on=False,
             zorder=3,
         )
