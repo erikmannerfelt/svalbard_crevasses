@@ -28,9 +28,9 @@ ARNESEN_OUTLINE_YEARS = {
     2025: 2023,
 }
 GLACIERS = [
-    "Arnesenbreen",
     "Recherchebreen",
     "Moršnevbreen",
+    "Arnesenbreen",
     "Borebreen",
     "Vallåkrabreen",
     "Liestølbreen",
@@ -93,18 +93,28 @@ def sample_arnesen_maps(annual_maps: dict[int, object], vote_fraction_dir: Path)
 
 
 def make_figure(values: pd.DataFrame, arnesen_maps: dict, output_path: Path) -> None:
-    fig, axes = plt.subplots(2, 7, figsize=(10, 3.9), squeeze=False, width_ratios=[1/6] * 3 + [1 / 8] * 4)
-    axes = axes.ravel()
+    fig = plt.figure(figsize=(10, 3.9))
+    outer = fig.add_gridspec(1, 2, width_ratios=[4, 4], wspace=0.05)
+    timeseries_grid = outer[0].subgridspec(2, 3, wspace=0.35, hspace=0.18)
+    map_grid = outer[1].subgridspec(2, 4, wspace=0.02, hspace=-0.18)
+    timeseries_axes = timeseries_grid.subplots()
+    map_axes = map_grid.subplots()
+
+    map_bounds = np.array([arnesen_maps[year][3].geometry.bounds for year in ARNESEN_YEARS])
+    left, bottom = map_bounds[:, :2].min(axis=0)
+    right, top = map_bounds[:, 2:].max(axis=0)
+    padding = 0.03 * max(right - left, top - bottom)
+    map_extent = (left - padding, right + padding, bottom - padding, top + padding)
 
     for index, glacier in enumerate(GLACIERS):
-        ax = axes[index // 3 * 7 + index % 3]
+        ax = timeseries_axes.ravel()[index]
         subset = values[values.glac_name == glacier]
         annual = subset.groupby("year").crevasse_area_km2.agg(
             median="median", low=lambda x: x.quantile(0.025), high=lambda x: x.quantile(0.975)
         ).reset_index()
         ax.fill_between(annual.year, annual["low"], annual["high"], color="#d98c8c", alpha=0.35, linewidth=0)
         ax.plot(annual.year, annual["median"], color="#963b3b", marker="o", markersize=2.5)
-        ax.set_title(glacier, fontsize=8)
+        ax.set_title(glacier, fontsize=8, pad=3)
         ax.set_ylim(0, max(1, 1.1 * annual["high"].max()))
         ax.set_xlim(2016.7, 2025.3)
         ax.set_xticks([2019, 2023])
@@ -119,21 +129,38 @@ def make_figure(values: pd.DataFrame, arnesen_maps: dict, output_path: Path) -> 
             ax.set_xlabel("Year")
 
     for map_index, year in enumerate(ARNESEN_YEARS):
-        ax = axes[3 + map_index + 3 * (map_index >= 4)]
+        ax = map_axes.ravel()[map_index]
         image, inside, transform, map_outline = arnesen_maps[year]
         display = np.ma.masked_where(~inside, image)
         height, width = display.shape
         left, bottom, right, top = array_bounds(height, width, transform)
-        ax.imshow(display, cmap="YlOrRd", vmin=0, vmax=1, origin="upper", interpolation="none", extent=(left, right, bottom, top))
+        img = ax.imshow(display, cmap="YlOrRd", vmin=0, vmax=1, origin="upper", interpolation="none", extent=(left, right, bottom, top))
         boundary = gpd.GeoSeries([map_outline.geometry], crs="EPSG:32633")
         boundary.boundary.plot(ax=ax, color="#333333", linewidth=0.6)
-        # ax.set_title(str(year), fontsize=8)
-        plt.text(0.5, 1.05, str(year), transform=ax.transAxes, ha="center", va="bottom")
+        plt.text(0.03, 0.97, str(year), transform=ax.transAxes, ha="left", va="top")
+
         ax.set_xticks([])
         ax.set_yticks([])
+        ax.set_xlim(map_extent[0], map_extent[1])
+        ax.set_ylim(map_extent[2], map_extent[3])
         ax.set_aspect("equal")
 
-    fig.subplots_adjust(left=0.07, right=0.99, top=0.96, bottom=0.08, hspace=0.15, wspace=0.26)
+        if map_index == (len(ARNESEN_YEARS) - 1):
+            ax_inset = ax.inset_axes([0.52, 0.07, 0.1, 0.3])
+            cbar = plt.colorbar(img, ax_inset)
+            cbar.set_ticks(ticks=[0, 1],labels=["0%", "100%"], fontsize=8) 
+        elif map_index == (len(ARNESEN_YEARS) - 2):
+            scale_km = 3
+            scale_xmax = ax.get_xlim()[1] - 1200
+
+            scale_y = ax.get_ylim()[0] + 1500
+            ax.plot([scale_xmax - scale_km * 1000, scale_xmax], [scale_y] * 2, color="black")
+            for (label, xcoord) in [(f"{scale_km} km", scale_xmax), ("0 km", scale_xmax - scale_km * 1000)]:
+                ax.text(xcoord, scale_y - 250,label , transform=ax.transData, fontsize=8, ha="center", va="top")
+                ax.plot([xcoord] * 2, [scale_y, scale_y + 250], color="black")
+            
+
+    fig.subplots_adjust(left=0.07, right=0.99, top=0.99, bottom=0.08)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=250, bbox_inches="tight")
     fig.savefig(output_path.with_suffix(".pdf"), bbox_inches="tight")

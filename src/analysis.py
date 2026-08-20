@@ -20,7 +20,7 @@ SURGE_OVERRIDES = {
     "RGI2000-v7.0-G-07-00780": {"S_Term": 2017},  # Approximate for Vasilievbreen.
     "RGI2000-v7.0-G-07-01312": {"glac_name": "Lilliehöökbreen"},
     "RGI2000-v7.0-G-07-01379": {"S_Onset": "2015", "S_Term": "Ongoing", "glac_name": "Austfonna Basin-7"},
-    "RGI2000-v7.0-G-07-01383": {"glac_name": "Storisstraumen"},
+    "RGI2000-v7.0-G-07-01383": {"glac_name": "Storisstraumen", "S_Term": "1873; Ongoing"},
     "RGI2000-v7.0-G-07-01385": {"glac_name": "Austfonna Basin-2"},
     "RGI2000-v7.0-G-07-01381": {"glac_name": "Austfonna Basin-5"},
     "RGI2000-v7.0-G-07-01384": {"glac_name": "Bråsvellbreen"},
