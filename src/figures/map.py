@@ -6,16 +6,27 @@ from pathlib import Path
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import matplotlib.patheffects
+import shapely.geometry
 from matplotlib.colors import TwoSlopeNorm
 from matplotlib.patches import Rectangle
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import pandas as pd
 
 from src.analysis import END_YEAR, YEARS, _surge_overlaps, read_surge_database
+import src.figures.crevasse_timeseries
 
 
 PRE_YEARS = 5
 MIDPOINT_YEAR = int(YEARS[len(YEARS) // 2])
+
+GLACIER_ANNOTATIONS = {
+    "Recherchebreen": {"xy": [500000, 8592000], "xytext": [460000, 8592000]},
+    "Moršnevbreen": {"xy": [562000, 8621000], "xytext": [590000, 8621000]},
+    "Arnesenbreen": {"xy": [574000, 8639000], "xytext": [594000, 8655000]},
+    "Borebreen": {"xy": [473000, 8710000], "xytext": [430000, 8710000]},
+    "Vallåkrabreen": {"xy": [550320, 8644000], "xytext": [520000, 8635000]},
+    "Liestølbreen": {"xy": [545000, 8596000], "xytext": [575000, 8586000]},
+}
 
 
 def glacier_trends_with_geometry(trends_path: Path, surge_zip: Path) -> gpd.GeoDataFrame:
@@ -96,7 +107,12 @@ def plot_crevasse_trend_map(
 ) -> None:
     """Plot glacier trend polygons over the S100 land polygons."""
     glaciers = classify_surge_periods(glacier_trends_with_geometry(trends_path, surge_zip), pre_years=pre_years)
-    land = gpd.read_file(land_path)
+    land = gpd.read_file(land_path).difference(
+        # Remove Kong Karls Land because it's in the way of the colorbar
+        shapely.geometry.box(730000, 8740000, 900000, 8820000)
+    )
+
+    print(land.iloc[0])
 
     if glaciers.crs != land.crs:
         glaciers = glaciers.to_crs(land.crs)
@@ -142,12 +158,20 @@ def plot_crevasse_trend_map(
         zorder=3,
         label=f"Surges {int(YEARS[0]) - pre_years}-{MIDPOINT_YEAR - 1}",
     )
+
+    for glacier_name in src.figures.crevasse_timeseries.GLACIERS:
+        ax.annotate(
+            glacier_name[0],
+            **GLACIER_ANNOTATIONS[glacier_name],
+             arrowprops=dict(arrowstyle="->", color="#333", lw=2)
+
+        )
     sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
     sm.set_array([])
     # Keep the colorbar's upper edge in the map's upper-right corner, but leave
     # room below it for the agreement matrix.
     colorbar_ax = ax.inset_axes([0.87, 0.52, 0.04, 0.32])
-    fig.colorbar(sm, cax=colorbar_ax, label="Crevasse area trend (km²/year)")
+    fig.colorbar(sm, cax=colorbar_ax, label="Crevasse area trend (km² year$^{-1}$)")
     ax.set_axis_off()
     ax.legend(loc="lower left", bbox_to_anchor=(0.02, 0.02), fontsize=8, framealpha=0.9)
     agreement_ax = ax.inset_axes([0.67, 0, 0.33, 0.60])
