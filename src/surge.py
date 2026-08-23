@@ -68,6 +68,36 @@ def surge_overlaps(
     return False
 
 
+def terminated_intervals(term_value: object, onset_value: object) -> list[tuple[int, int, bool]]:
+    """Return paired completed surge intervals as ``(onset, termination, inferred)``.
+
+    ``Not observed`` terminations are retained and marked as inferred because the
+    project convention assigns them a ten-year duration. Ongoing and invalid
+    terminations are not completed intervals.
+    """
+    terms, onsets = _tokens(term_value), _tokens(onset_value)
+    intervals = []
+    for index, onset in enumerate(onsets):
+        try:
+            onset_year = int(onset)
+        except ValueError:
+            continue
+        if index >= len(terms):
+            continue
+        term = terms[index]
+        inferred = term.lower() == "not observed"
+        if inferred:
+            term_year = onset_year + 10
+        else:
+            try:
+                term_year = int(term)
+            except ValueError:
+                continue
+        if term_year >= onset_year:
+            intervals.append((onset_year, term_year, inferred))
+    return intervals
+
+
 def read_database(path: Path = settings.SURGE_DATABASE) -> gpd.GeoDataFrame:
     """Read, correct, and classify the Svalbard RGI surge database."""
     columns = [
@@ -100,3 +130,7 @@ def test_surge_intervals_and_special_terms() -> None:
     assert surge_overlaps("Not observed", "2015", 2024, 2025)
     assert not surge_overlaps("2019", "2015", 2020, 2025)
     assert surge_overlaps("1890; Ongoing", "1880; 2016", 2020, 2025)
+    assert terminated_intervals("2019; Not observed; Ongoing", "2015; 2000; 2022") == [
+        (2015, 2019, False),
+        (2000, 2010, True),
+    ]

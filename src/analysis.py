@@ -211,9 +211,24 @@ def add_surge_periods(summary: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def _latest_exact_termination(term_value: object, onset_value: object) -> int | None:
+    """Return the latest exact completed termination, if one exists."""
+    intervals = surge.terminated_intervals(term_value, onset_value)
+    terminations = [termination for _, termination, inferred in intervals if not inferred]
+    return max(terminations, default=None)
+
+
 def surge_period_summary(summary: pd.DataFrame, model: pd.DataFrame) -> pd.DataFrame:
     """Summarize model rates and significant-glacier counts in six result cells."""
     classified = add_surge_periods(summary)
+    classified["latest_exact_termination"] = [
+        _latest_exact_termination(term, onset)
+        for term, onset in zip(classified.S_Term, classified.S_Onset, strict=True)
+    ]
+    historical_start = settings.MIDPOINT_YEAR - settings.HISTORICAL_TERMINATION_YEARS
+    classified["historical_termination"] = classified.latest_exact_termination.between(
+        historical_start, settings.MIDPOINT_YEAR, inclusive="both"
+    )
     model = model.merge(
         classified[["anlys_id", "surge_period", "trend_sign"]],
         on="anlys_id",
@@ -233,6 +248,29 @@ def surge_period_summary(summary: pd.DataFrame, model: pd.DataFrame) -> pd.DataF
             significant = (
                 (glacier.slope_km2_yr_high < 0) if sign == "negative" else (glacier.slope_km2_yr_low > 0)
             ).sum()
+            historical_glacier = glacier[glacier.historical_termination]
+            historical_significant = (
+                (historical_glacier.slope_km2_yr_high < 0)
+                if sign == "negative"
+                else (historical_glacier.slope_km2_yr_low > 0)
+            ).sum()
+            significant_glacier = glacier[
+                (glacier.slope_km2_yr_high < 0) if sign == "negative" else (glacier.slope_km2_yr_low > 0)
+            ]
+            significant_historical_glacier = significant_glacier[significant_glacier.historical_termination]
+            historical_rates = model[
+                (model.surge_period == period)
+                & (model.trend_sign == sign)
+                & model.anlys_id.isin(significant_historical_glacier.anlys_id)
+            ].groupby("model_id", as_index=False).slope_km2_yr.sum()
+            historical_values = historical_rates.slope_km2_yr
+            historical_rate = historical_values.median() if len(historical_values) else np.nan
+            significant_rates = model[
+                (model.surge_period == period)
+                & (model.trend_sign == sign)
+                & model.anlys_id.isin(significant_glacier.anlys_id)
+            ].groupby("model_id", as_index=False).slope_km2_yr.sum()
+            total_magnitude = significant_rates.slope_km2_yr.abs().median() if len(significant_rates) else np.nan
             rows.append(
                 {
                     "surge_period": period,
@@ -244,6 +282,14 @@ def surge_period_summary(summary: pd.DataFrame, model: pd.DataFrame) -> pd.DataF
                     "significant_glacier_count": significant,
                     "glacier_count": len(glacier),
                     "model_count": len(values),
+                    "historical_termination_years": settings.HISTORICAL_TERMINATION_YEARS,
+                    "historical_termination_start_year": historical_start,
+                    "historical_termination_glacier_count": len(historical_glacier),
+                    "historical_termination_significant_glacier_count": historical_significant,
+                    "historical_termination_significant_rate_km2_yr": historical_rate,
+                    "historical_termination_significant_rate_share": (
+                        abs(historical_rate) / total_magnitude if total_magnitude else np.nan
+                    ),
                 }
             )
     return pd.DataFrame(rows)
