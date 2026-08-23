@@ -86,7 +86,8 @@ def aggregate_model_areas(
         path = input_dir / settings.MODEL_RASTER_TEMPLATE.format(year=year)
         values, transform = read_model_votes(path)
         vote_path = vote_fraction_dir / settings.VOTE_RASTER_TEMPLATE.format(year=year)
-        write_vote_fraction(values, path, vote_path)
+        if not vote_path.exists():
+            write_vote_fraction(values, path, vote_path)
         labels = rasterize(
             zip(polygons.geometry, labels_by_index, strict=True),
             out_shape=values.shape[1:],
