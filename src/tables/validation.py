@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import argparse
 import csv
 import statistics
 from pathlib import Path
 
+from src import settings
 
 METRICS = (
     ("accuracy", "Accuracy"),
@@ -29,7 +29,9 @@ def format_percentage(value: float) -> str:
 
 
 def format_average(values: list[float]) -> str:
-    return f"{format_percentage(statistics.fmean(values))} $\\pm$ {format_percentage(statistics.stdev(values))}"
+    mean = format_percentage(statistics.fmean(values))
+    deviation = format_percentage(statistics.stdev(values))
+    return f"{mean} $\\pm$ {deviation}"
 
 
 def render_table(rows: list[dict[str, str]]) -> str:
@@ -47,10 +49,7 @@ def render_table(rows: list[dict[str, str]]) -> str:
         lines.append(" & ".join(values) + r" \\")
 
     averages = [r"\textbf{Average}"]
-    averages.extend(
-        r"\textbf{" + format_average([float(row[column]) for row in rows]) + r"}"
-        for column, _ in METRICS
-    )
+    averages.extend(r"\textbf{" + format_average([float(row[column]) for row in rows]) + r"}" for column, _ in METRICS)
     lines.extend(
         [
             r"\midrule",
@@ -64,8 +63,8 @@ def render_table(rows: list[dict[str, str]]) -> str:
 
 
 def run(
-    input_path: Path = Path("input/crevasse_rf_ensemble_validation_summary.csv"),
-    output_path: Path = Path("output/tables/validation.tex"),
+    input_path: Path = settings.INPUT_DIR / "crevasse_rf_ensemble_validation_summary.csv",
+    output_path: Path = settings.TABLE_DIR / "validation.tex",
 ) -> list[dict[str, str]]:
     """Read validation data and write the corresponding LaTeX table."""
     with input_path.open(newline="") as file:
@@ -85,8 +84,9 @@ def run(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=Path("input/crevasse_rf_ensemble_validation_summary.csv"))
-    parser.add_argument("--output", type=Path, default=Path("output/tables/validation.tex"))
-    args = parser.parse_args()
-    run(args.input, args.output)
+    run()
+
+
+def test_validation_formatting() -> None:
+    assert format_percentage(0.25) == "25\\%"
+    assert latex_escape("a_b & c") == r"a\_b \& c"
