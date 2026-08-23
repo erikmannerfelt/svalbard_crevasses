@@ -8,6 +8,7 @@ from typing import Final
 ROOT: Final = Path(__file__).resolve().parent.parent
 INPUT_DIR: Final = ROOT / "input"
 OUTPUT_DIR: Final = ROOT / "output"
+CACHE_DIR: Final = ROOT / "cache"
 DATA_DIR: Final = OUTPUT_DIR / "data"
 RASTER_DIR: Final = OUTPUT_DIR / "rasters" / "vote-fractions"
 FIGURE_DIR: Final = OUTPUT_DIR / "figures"

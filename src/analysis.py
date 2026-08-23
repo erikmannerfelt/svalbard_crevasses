@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Literal
 
 import geopandas as gpd
 import numpy as np
@@ -11,15 +12,15 @@ import pandas as pd
 
 from src import raster, settings, surge
 
+type ForceRedo = Literal[False, "self", "all"]
+
 
 def _write_arrow(data: pd.DataFrame, path: Path) -> pd.DataFrame:
     """Atomically write an Arrow table and return the finalized table."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp.arrow")
     try:
-        normalized = data.reset_index(drop=True).copy()
-        for column in normalized.select_dtypes(include="str"):
-            normalized[column] = normalized[column].astype("string")
+        normalized = data.reset_index(drop=True).convert_dtypes()
         normalized.to_feather(temporary)
         os.replace(temporary, path)
         return pd.read_feather(path)
@@ -27,8 +28,12 @@ def _write_arrow(data: pd.DataFrame, path: Path) -> pd.DataFrame:
         temporary.unlink(missing_ok=True)
 
 
-def read_predictions(metadata: gpd.GeoDataFrame) -> pd.DataFrame:
+def read_predictions(metadata: gpd.GeoDataFrame, force_redo: ForceRedo = False) -> pd.DataFrame:
     """Aggregate and validate complete model trajectories."""
+    cache_path = settings.CACHE_DIR / "predictions.arrow"
+    if force_redo is False and cache_path.exists():
+        return pd.read_feather(cache_path)
+
     data = raster.aggregate_model_areas(settings.INPUT_DIR, metadata, settings.YEARS, settings.RASTER_DIR)
     expected = len(settings.YEARS) * settings.N_MODELS
     counts = data.groupby("anlys_id").size()
@@ -38,7 +43,7 @@ def read_predictions(metadata: gpd.GeoDataFrame) -> pd.DataFrame:
         raise ValueError("Duplicate glacier/model/year prediction rows")
     data["positive_area_km2"] = data.positive_area_m2 / 1e6
     data["valid_area_km2"] = data.valid_area_m2 / 1e6
-    return data
+    return _write_arrow(data, cache_path)
 
 
 def attach_metadata(data: pd.DataFrame, metadata: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -258,18 +263,26 @@ def surge_period_summary(summary: pd.DataFrame, model: pd.DataFrame) -> pd.DataF
                 (glacier.slope_km2_yr_high < 0) if sign == "negative" else (glacier.slope_km2_yr_low > 0)
             ]
             significant_historical_glacier = significant_glacier[significant_glacier.historical_termination]
-            historical_rates = model[
-                (model.surge_period == period)
-                & (model.trend_sign == sign)
-                & model.anlys_id.isin(significant_historical_glacier.anlys_id)
-            ].groupby("model_id", as_index=False).slope_km2_yr.sum()
+            historical_rates = (
+                model[
+                    (model.surge_period == period)
+                    & (model.trend_sign == sign)
+                    & model.anlys_id.isin(significant_historical_glacier.anlys_id)
+                ]
+                .groupby("model_id", as_index=False)
+                .slope_km2_yr.sum()
+            )
             historical_values = historical_rates.slope_km2_yr
             historical_rate = historical_values.median() if len(historical_values) else np.nan
-            significant_rates = model[
-                (model.surge_period == period)
-                & (model.trend_sign == sign)
-                & model.anlys_id.isin(significant_glacier.anlys_id)
-            ].groupby("model_id", as_index=False).slope_km2_yr.sum()
+            significant_rates = (
+                model[
+                    (model.surge_period == period)
+                    & (model.trend_sign == sign)
+                    & model.anlys_id.isin(significant_glacier.anlys_id)
+                ]
+                .groupby("model_id", as_index=False)
+                .slope_km2_yr.sum()
+            )
             total_magnitude = significant_rates.slope_km2_yr.abs().median() if len(significant_rates) else np.nan
             rows.append(
                 {
@@ -324,6 +337,15 @@ if __name__ == "__main__":
     run()
 
 
+def test_write_arrow_normalizes_numpy_string_dtypes(tmp_path: Path) -> None:
+    """Arrow serialization accepts NumPy's native string dtype."""
+    data = pd.DataFrame({"name": np.array(["a", "b"], dtype="str"), "value": [1, 2]})
+
+    result = _write_arrow(data, tmp_path / "table.arrow")
+
+    assert result.to_dict(orient="list") == {"name": ["a", "b"], "value": [1, 2]}
+
+
 def test_surge_period_summary_has_six_cells() -> None:
     summary = pd.DataFrame(
         {
@@ -353,3 +375,4 @@ def test_surge_period_summary_has_six_cells() -> None:
         ].item()
         == 1
     )
+

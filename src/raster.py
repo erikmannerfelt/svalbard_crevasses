@@ -8,6 +8,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio
+import tqdm
 from rasterio.features import geometry_mask, rasterize
 from rasterio.windows import from_bounds
 
@@ -82,7 +83,7 @@ def aggregate_model_areas(
     polygons = polygons.to_crs(settings.RASTER_CRS).reset_index(drop=True)
     labels_by_index = np.arange(1, len(polygons) + 1, dtype=np.int32)
     rows: list[dict[str, np.ndarray]] = []
-    for year in years:
+    for year in tqdm.tqdm(years, desc="Sampling data"):
         path = input_dir / settings.MODEL_RASTER_TEMPLATE.format(year=year)
         values, transform = read_model_votes(path)
         vote_path = vote_fraction_dir / settings.VOTE_RASTER_TEMPLATE.format(year=year)
