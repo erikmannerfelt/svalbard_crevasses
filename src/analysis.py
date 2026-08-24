@@ -223,29 +223,29 @@ def _latest_exact_termination(term_value: object, onset_value: object) -> int | 
     return max(terminations, default=None)
 
 
-def surge_period_summary(summary: pd.DataFrame, model: pd.DataFrame) -> pd.DataFrame:
-    """Summarize model rates and significant-glacier counts in six result cells."""
-    classified = add_surge_periods(summary)
-    classified["latest_exact_termination"] = [
-        _latest_exact_termination(term, onset)
-        for term, onset in zip(classified.S_Term, classified.S_Onset, strict=True)
-    ]
-    historical_start = settings.MIDPOINT_YEAR - settings.HISTORICAL_TERMINATION_YEARS
-    classified["historical_termination"] = classified.latest_exact_termination.between(
-        historical_start, settings.MIDPOINT_YEAR, inclusive="both"
-    )
-    model = model.merge(
-        classified[["anlys_id", "surge_period", "trend_sign"]],
-        on="anlys_id",
-        validate="many_to_one",
-    )
-    rates = model.groupby(["model_id", "surge_period", "trend_sign"], as_index=False).slope_km2_yr.sum()
+def _surge_period_summary_cells(
+    classified: pd.DataFrame,
+    model: pd.DataFrame,
+    group_columns: list[str],
+    group_values: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Build surge-period summary cells, optionally grouped by spatial zone."""
+    rates = model.groupby([*group_columns, "model_id", "trend_sign"], as_index=False).slope_km2_yr.sum()
     rows = []
-    for period in ("pre", "recent", "none"):
+    if group_values is None:
+        group_values = classified[group_columns].drop_duplicates()
+    for group_value in group_values.itertuples(index=False, name=None):
+        group_filter = np.ones(len(classified), dtype=bool)
+        for column, value in zip(group_columns, group_value, strict=True):
+            group_filter &= classified[column].eq(value)
         for sign in ("negative", "positive"):
-            cell = rates[(rates.surge_period == period) & (rates.trend_sign == sign)]
+            cell_filter = group_filter & classified.trend_sign.eq(sign)
+            group_rates = rates
+            for column, value in zip(group_columns, group_value, strict=True):
+                group_rates = group_rates[group_rates[column] == value]
+            cell = group_rates[group_rates.trend_sign == sign]
             values = cell.slope_km2_yr
-            glacier = classified[(classified.surge_period == period) & (classified.trend_sign == sign)]
+            glacier = classified[cell_filter]
             if values.empty:
                 low = median = high = np.nan
             else:
@@ -263,55 +263,110 @@ def surge_period_summary(summary: pd.DataFrame, model: pd.DataFrame) -> pd.DataF
                 (glacier.slope_km2_yr_high < 0) if sign == "negative" else (glacier.slope_km2_yr_low > 0)
             ]
             significant_historical_glacier = significant_glacier[significant_glacier.historical_termination]
+            historical_model = model[model.anlys_id.isin(significant_historical_glacier.anlys_id)]
+            significant_model = model[model.anlys_id.isin(significant_glacier.anlys_id)]
+            for column, value in zip(group_columns, group_value, strict=True):
+                historical_model = historical_model[historical_model[column] == value]
+                significant_model = significant_model[significant_model[column] == value]
             historical_rates = (
-                model[
-                    (model.surge_period == period)
-                    & (model.trend_sign == sign)
-                    & model.anlys_id.isin(significant_historical_glacier.anlys_id)
-                ]
+                historical_model[historical_model.trend_sign == sign]
                 .groupby("model_id", as_index=False)
                 .slope_km2_yr.sum()
             )
             historical_values = historical_rates.slope_km2_yr
             historical_rate = historical_values.median() if len(historical_values) else np.nan
             significant_rates = (
-                model[
-                    (model.surge_period == period)
-                    & (model.trend_sign == sign)
-                    & model.anlys_id.isin(significant_glacier.anlys_id)
-                ]
+                significant_model[significant_model.trend_sign == sign]
                 .groupby("model_id", as_index=False)
                 .slope_km2_yr.sum()
             )
             total_magnitude = significant_rates.slope_km2_yr.abs().median() if len(significant_rates) else np.nan
-            rows.append(
-                {
-                    "surge_period": period,
-                    "trend_sign": sign,
-                    "median_rate_km2_yr": median,
-                    "rate_low_km2_yr": low,
-                    "rate_high_km2_yr": high,
-                    "rate_uncertainty_km2_yr": max(median - low, high - median) if values.size else np.nan,
-                    "significant_glacier_count": significant,
-                    "glacier_count": len(glacier),
-                    "model_count": len(values),
-                    "historical_termination_years": settings.HISTORICAL_TERMINATION_YEARS,
-                    "historical_termination_start_year": historical_start,
-                    "historical_termination_glacier_count": len(historical_glacier),
-                    "historical_termination_significant_glacier_count": historical_significant,
-                    "historical_termination_significant_rate_km2_yr": historical_rate,
-                    "historical_termination_significant_rate_share": (
-                        abs(historical_rate) / total_magnitude if total_magnitude else np.nan
-                    ),
-                }
-            )
+            row = {
+                **dict(zip(group_columns, group_value, strict=True)),
+                "trend_sign": sign,
+                "median_rate_km2_yr": median,
+                "rate_low_km2_yr": low,
+                "rate_high_km2_yr": high,
+                "rate_uncertainty_km2_yr": max(median - low, high - median) if values.size else np.nan,
+                "significant_glacier_count": significant,
+                "glacier_count": len(glacier),
+                "model_count": len(values),
+                "historical_termination_years": settings.HISTORICAL_TERMINATION_YEARS,
+                "historical_termination_start_year": settings.MIDPOINT_YEAR - settings.HISTORICAL_TERMINATION_YEARS,
+                "historical_termination_glacier_count": len(historical_glacier),
+                "historical_termination_significant_glacier_count": historical_significant,
+                "historical_termination_significant_rate_km2_yr": historical_rate,
+                "historical_termination_significant_rate_share": (
+                    abs(historical_rate) / total_magnitude if total_magnitude else np.nan
+                ),
+            }
+            rows.append(row)
     return pd.DataFrame(rows)
+
+
+def surge_period_summary(summary: pd.DataFrame, model: pd.DataFrame) -> pd.DataFrame:
+    """Summarize model rates and significant-glacier counts in six result cells."""
+    classified = add_surge_periods(summary)
+    classified["latest_exact_termination"] = [
+        _latest_exact_termination(term, onset)
+        for term, onset in zip(classified.S_Term, classified.S_Onset, strict=True)
+    ]
+    historical_start = settings.MIDPOINT_YEAR - settings.HISTORICAL_TERMINATION_YEARS
+    classified["historical_termination"] = classified.latest_exact_termination.between(
+        historical_start, settings.MIDPOINT_YEAR, inclusive="both"
+    )
+    model = model.merge(
+        classified[["anlys_id", "surge_period", "trend_sign"]],
+        on="anlys_id",
+        validate="many_to_one",
+    )
+    periods = pd.DataFrame({"surge_period": ("pre", "recent", "none")})
+    return _surge_period_summary_cells(classified, model, ["surge_period"], periods)
+
+
+def surge_zone_summary(
+    summary: pd.DataFrame, model: pd.DataFrame, glaciers: gpd.GeoDataFrame, zones: gpd.GeoDataFrame
+) -> pd.DataFrame:
+    """Summarize surge periods and trend signs by the centroid's glacier zone."""
+    classified = add_surge_periods(summary)
+    classified["latest_exact_termination"] = [
+        _latest_exact_termination(term, onset)
+        for term, onset in zip(classified.S_Term, classified.S_Onset, strict=True)
+    ]
+    historical_start = settings.MIDPOINT_YEAR - settings.HISTORICAL_TERMINATION_YEARS
+    classified["historical_termination"] = classified.latest_exact_termination.between(
+        historical_start, settings.MIDPOINT_YEAR, inclusive="both"
+    )
+    points = gpd.GeoDataFrame(glaciers[["rgi_id", "geometry"]].copy(), geometry="geometry", crs=glaciers.crs)
+    zone_columns = zones[["zone_label", "zone_name", "geometry"]].copy()
+    if points.crs != zone_columns.crs:
+        points = points.to_crs(zone_columns.crs)
+    points.geometry = points.geometry.centroid
+    joined = gpd.sjoin(points, zone_columns, how="left", predicate="within")
+    classified = classified.merge(
+        joined[["rgi_id", "zone_label", "zone_name"]], on="rgi_id", how="left", validate="one_to_one"
+    )
+    if classified.zone_label.isna().any():
+        raise ValueError("Some glacier centroids did not fall within a glacier zone")
+    model = model.merge(
+        classified[["anlys_id", "surge_period", "trend_sign", "zone_label", "zone_name"]],
+        on="anlys_id",
+        validate="many_to_one",
+    )
+    periods = pd.DataFrame({"surge_period": ("pre", "recent", "none")})
+    spatial_groups = zones[["zone_label", "zone_name"]].drop_duplicates().merge(periods, how="cross")
+    return _surge_period_summary_cells(
+        classified,
+        model,
+        ["zone_label", "zone_name", "surge_period"],
+        spatial_groups,
+    )
 
 
 def run() -> dict[str, pd.DataFrame]:
     """Run the complete analysis using the fixed project settings."""
-    metadata = surge.read_database()
-    data, metadata = attach_metadata(read_predictions(metadata), metadata)
+    rgi_metadata = surge.read_database()
+    data, metadata = attach_metadata(read_predictions(rgi_metadata), rgi_metadata)
     glacier_model, glacier = fit_trends(data)
     annual, regional_model, regional = regional_trends(data, metadata)
     glacier = add_surge_periods(glacier)
@@ -330,6 +385,10 @@ def run() -> dict[str, pd.DataFrame]:
     summary = surge_period_summary(glacier, glacier_model)
     summary.to_csv(settings.DATA_DIR / "surge-period-trend-summary.csv", index=False)
     tables["surge-period-trend-summary"] = summary
+    zones = gpd.read_file(settings.GLACIER_ZONES_FILE)
+    zone_summary = surge_zone_summary(glacier, glacier_model, rgi_metadata, zones)
+    zone_summary.to_csv(settings.DATA_DIR / "surge-period-trend-zone-summary.csv", index=False)
+    tables["surge-period-trend-zone-summary"] = zone_summary
     return tables
 
 
@@ -375,4 +434,3 @@ def test_surge_period_summary_has_six_cells() -> None:
         ].item()
         == 1
     )
-
