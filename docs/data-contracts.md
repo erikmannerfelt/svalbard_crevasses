@@ -1,5 +1,39 @@
 # Data Contracts
 
+## Framing: Exposed Vs. Structural Crevassing
+
+The prediction rasters and everything derived from them (vote fractions,
+annual/trend products, figures) measure *detectable/exposed* crevasse
+extent, not total structural crevassing. Two things drive the gap:
+
+- **Snow/firn bridging.** A structurally real crevasse can be invisible to
+  both the training labels and the predictor for an entire melt season if
+  it stays snow-covered. It doesn't stop existing; it stops being
+  detectable. A later low-snow year can re-expose it with no new fracturing
+  having occurred.
+- **Label/predictor timing mismatch.** Training labels are hand-digitized
+  from specific (often late-summer) scenes, when snow/firn cover is at its
+  seasonal minimum and crevasses are most visible. The predictor
+  (`GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL`) is an annual composite. A polygon
+  correctly labeled positive from one late-summer scene can still carry an
+  annual embedding signature dominated by firn/snow, because that's what the
+  pixel looked like most of the year. This was identified as a likely
+  contributor to model false positives in firn-covered terrain (see
+  `docs/label-priorities.md` and the label-embedding diagnostics in
+  `scripts/label_embedding_diagnostics.py`).
+
+**Consequence for interpretation:** a change in predicted area/trend can
+reflect real structural change, a change in regional snow/melt conditions
+between years, or both, and the two are not separable from the predicted
+area alone. This directly bears on the surge-period comparison this project
+is built around (`surge-period-trend-summary.csv`): a Svalbard-wide
+low-snow year would inflate predicted area across surging and non-surging
+glaciers alike, which could dilute or fabricate an apparent trend
+independent of surge dynamics. Treat predicted-area results as evidence
+about *exposed* crevassing, and prefer "exposed crevasse(s)"/"exposed
+crevasse extent" over bare "crevasse(s)" when describing the predicted or
+trend quantity in new writing.
+
 ## Source Bundle
 
 The source bundle is provisioned manually in `input/`. The workflow does not

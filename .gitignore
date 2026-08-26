@@ -4,3 +4,8 @@ __pycache__/
 input/
 output
 scripts/
+cache.old*
+output.old*
+*_old.*
+*_old2.*
+*_old3.*

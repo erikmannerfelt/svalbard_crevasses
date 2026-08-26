@@ -144,7 +144,7 @@ def plot() -> None:
     ax.set_xlim(400000, 848000)
     land.plot(ax=ax, color="#e6e6e1", edgecolor="#aaaaa5", linewidth=0.25)
     cmap = "PuOr_r"
-    norm = TwoSlopeNorm(vmin=-2, vcenter=0, vmax=2)
+    norm = TwoSlopeNorm(vmin=-6, vcenter=0, vmax=6)
     glaciers.plot(
         ax=ax,
         column="slope_km2_yr",

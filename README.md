@@ -1,12 +1,23 @@
 # Svalbard Crevasse Analysis
 
-This project analyzes annual crevasse predictions for glaciers in Svalbard. It
-combines Google Earth Engine raster exports from a 30-model ensemble with RGI7
-glacier geometry and surge histories from the Svalbard surge database.
+This project analyzes annual predictions of *exposed* crevasse extent for
+glaciers in Svalbard. It combines Google Earth Engine raster exports from a
+30-model ensemble with RGI7 glacier geometry and surge histories from the
+Svalbard surge database.
 
-The analysis asks how predicted crevasse-covered area changes through time,
-and whether those changes differ between glaciers with recent, earlier, or no
-recorded surge activity.
+The analysis asks how predicted exposed-crevasse-covered area changes through
+time, and whether those changes differ between glaciers with recent, earlier,
+or no recorded surge activity.
+
+## Framing: Exposed Vs. Structural Crevassing
+
+The predicted quantity is *detectable/exposed* crevasse extent, not total
+structural crevassing. Snow and firn bridging hide real crevasses without
+erasing them, so a predicted-area change can reflect genuine structural
+change, year-to-year exposure/snow conditions, or both -- it is not on its
+own evidence of new crevasse formation. See
+[`docs/data-contracts.md`](docs/data-contracts.md) for why this matters and
+how it can confound the surge-period comparison specifically.
 
 ## Data And Provenance
 

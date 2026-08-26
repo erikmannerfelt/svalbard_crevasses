@@ -30,6 +30,7 @@ RASTER_CRS: Final = "EPSG:32633"
 SURGE_DATABASE: Final = INPUT_DIR / "RGI_V7_Surge_Database.zip"
 LAND_FILE: Final = INPUT_DIR / "S100_Land_f.gpkg"
 OUTLINE_FILE: Final = INPUT_DIR / "glacier_outlines_mod.sqlite"
+VALIDATION_HOLDOUT_2024_FILE: Final = INPUT_DIR / "crevasse_rf_ensemble_validation_holdout_2024.csv"
 
 MODEL_RASTER_TEMPLATE: Final = "crevasse_model_probabilities_{year}.tif"
 VOTE_RASTER_TEMPLATE: Final = "crevasse_vote_fraction_{year}.tif"
@@ -45,7 +46,7 @@ RGI_NAME_MAP: Final = {"Morsjnevbreen / Strongbreen": "Moršnevbreen"}
 ARNESEN_YEARS: Final = tuple(range(2018, 2026))
 ARNESEN_OUTLINE_YEARS: Final = {
     2018: 2018,
-    2019: 2020,
+    2019: 2018,
     2020: 2020,
     2021: 2021,
     2022: 2022,
