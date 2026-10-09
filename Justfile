@@ -33,6 +33,9 @@ timeseries-figure:
 per-surge-figures:
     python -m src.figures.per_surge
 
+sentinel-examples-figure:
+    python -m src.figures.sentinel_examples
+
 figures: trend-map timeseries-figure per-surge-figures
 
 all: analyze validation-table figures

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
@@ -54,3 +55,63 @@ ARNESEN_OUTLINE_YEARS: Final = {
     2024: 2023,
     2025: 2023,
 }
+
+
+@dataclass(frozen=True)
+class SentinelExample:
+    """One Sentinel-2 image pair shown beside the vote-fraction rasters.
+
+    `bounds` is (left, bottom, right, top) in metres in the image's own UTM
+    zone, which differs between sites; the vote fraction is resampled onto
+    the image grid rather than the other way round. `stretch` applies a
+    linear contrast stretch shared by both dates, for scenes the export
+    leaves washed out. `stretch_exclude`, in the same coordinates as
+    `bounds`, leaves a box out of the stretch limits, e.g. open sea that
+    would otherwise set the black point and wash out the ice.
+    """
+
+    name: str
+    file_stem: str
+    cause: str
+    dates: tuple[str, str]
+    bounds: tuple[float, float, float, float]
+    stretch: bool = False
+    stretch_exclude: tuple[float, float, float, float] | None = None
+
+
+# Copernicus Browser "Highlight Optimized Natural Color" L1C exports. These are
+# demonstration examples chosen for unambiguous visible change, not a sample.
+SENTINEL_DIR: Final = INPUT_DIR / "sentinel2"
+SENTINEL_EXAMPLES: Final = (
+    SentinelExample(
+        "Wahlenbergbreen",
+        "wahlenbergbreen",
+        "surge",
+        ("2017-07-28", "2025-07-22"),
+        (479_000, 8_709_700, 485_500, 8_716_200),
+    ),
+    SentinelExample(
+        "Petermannbreen",
+        "petermannbreen",
+        "surge",
+        ("2018-07-30", "2025-08-28"),
+        (443_700, 8_710_000, 451_500, 8_717_800),
+    ),
+    SentinelExample(
+        "Conwayjøkulen",
+        "conwayjokulen",
+        "likely snow cover",
+        ("2019-08-05", "2024-08-04"),
+        (545_500, 8_752_700, 549_000, 8_756_200),
+        stretch=True,
+    ),
+    SentinelExample(
+        "NE Kvitøyjøkulen",
+        "kvitoyjokulen-ne",
+        "likely snow cover",
+        ("2018-07-30", "2025-08-06"),
+        (488_500, 8_909_000, 493_500, 8_914_000),
+        stretch=True,
+        stretch_exclude=(488_500, 8_913_100, 491_000, 8_914_000),
+    ),
+)
