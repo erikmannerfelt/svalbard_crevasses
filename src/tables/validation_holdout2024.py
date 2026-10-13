@@ -4,7 +4,7 @@ Reuses `validation.py`'s renderer as-is (it already takes
 `input_path`/`output_path` and doesn't assume a particular
 `validation_type`); only the input/output paths differ from the main
 in-training-year `crevasse_rf_ensemble_validation_summary.csv` table. See
-`scripts/svalbard_crevasse_detection.js`'s `runHoldoutValidation` for how
+`gee/svalbard_crevasse_detection.js`'s `runHoldoutValidation` for how
 this CSV is produced.
 """
 

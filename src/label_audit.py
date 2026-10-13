@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 import geopandas as gpd
 import numpy as np
@@ -12,27 +11,58 @@ import pandas as pd
 
 from src import settings
 
-LABELS_FILE: Final = settings.ROOT / "shapes" / "crevasse_area_labels.arrow"
+type ForceRedo = Literal[False, "self", "all"]
+
+# The GeoJSON is the Drive export of the tagged label collection written by
+# gee/svalbard_crevasse_labelling.js from the digitized polygons in
+# gee/imports.js. It is the primary label file; the Arrow below is derived.
+LABELS_SOURCE: Final = settings.ROOT / "shapes" / "crevasse_training_labels.geojson"
+LABELS_FILE: Final = settings.CACHE_DIR / "crevasse_area_labels.arrow"
+REQUIRED_LABEL_COLUMNS: Final = frozenset({"polyg_id", "crevassed", "year", "geometry"})
+# Carried through when the export provides them. `big_crevasses` marks positives
+# containing large, unambiguous crevasse fields and stratifies the raster
+# validation by crevasse size class.
+OPTIONAL_LABEL_COLUMNS: Final = ("big_crevasses",)
 ZONE_YEAR_SUMMARY_FILE: Final = settings.DATA_DIR / "label-zone-year-summary.csv"
 
-# Matches scripts/svalbard_crevasse_detection.js's SVALBARD_BOUNDS. Keep in sync if that changes.
+# Matches gee/svalbard_crevasse_detection.js's SVALBARD_BOUNDS. Keep in sync if that changes.
 SVALBARD_BOUNDS_32633: Final = (390_000.0, 8_480_000.0, 850_000.0, 8_970_000.0)
 
 
-def read_labels(path: Path = LABELS_FILE) -> gpd.GeoDataFrame:
+def read_labels(force_redo: ForceRedo = False) -> gpd.GeoDataFrame:
     """Read hand-digitized crevasse training-label polygons.
+
+    The labels are read from `LABELS_SOURCE` and cached as `LABELS_FILE` with
+    a fixed schema: ``polyg_id`` (str), ``crevassed`` (bool), ``year`` (int),
+    the optional columns present in the export (bool), and ``geometry``
+    (Polygon, EPSG:4326). Earth Engine's internal feature ``id`` is dropped.
+    The cache is cheap to rebuild and is written directly.
 
     Parameters
     ----------
-    path
-        Arrow file with columns ``polyg_id`` (str), ``crevassed`` (bool),
-        ``year`` (int), and ``geometry`` (Polygon, EPSG:4326).
+    force_redo
+        ``False`` reuses an existing cache; ``"self"`` or ``"all"`` rebuild it
+        from the GeoJSON (there are no derived dependencies to propagate to).
     """
-    labels = gpd.read_feather(path)
-    missing = {"polyg_id", "crevassed", "year", "geometry"} - set(labels.columns)
+    if force_redo is False and LABELS_FILE.exists():
+        return gpd.read_feather(LABELS_FILE)
+
+    frame = gpd.read_file(LABELS_SOURCE)
+    missing = REQUIRED_LABEL_COLUMNS - set(frame.columns)
     if missing:
-        raise ValueError(f"{path} is missing required columns: {sorted(missing)}")
-    return labels
+        raise ValueError(f"{LABELS_SOURCE} is missing required columns: {sorted(missing)}")
+    frame = frame.set_crs("EPSG:4326") if frame.crs is None else frame.to_crs("EPSG:4326")
+    frame["polyg_id"] = frame["polyg_id"].astype(str)
+    frame["crevassed"] = frame["crevassed"].astype(bool)
+    frame["year"] = frame["year"].astype(int)
+    optional = [column for column in OPTIONAL_LABEL_COLUMNS if column in frame.columns]
+    for column in optional:
+        frame[column] = frame[column].astype(bool)
+    frame = frame[["polyg_id", "crevassed", "year", *optional, "geometry"]]
+
+    LABELS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_feather(LABELS_FILE)
+    return gpd.read_feather(LABELS_FILE)
 
 
 def filter_to_svalbard(
@@ -44,7 +74,7 @@ def filter_to_svalbard(
     pan-Arctic labeling attempt and sit far outside Svalbard (Arctic Canada,
     Greenland, the Kara Sea coast, the Yukon, Tibet). They are not a
     labeling error to fix here -- they are filtered out the same way
-    ``scripts/svalbard_crevasse_detection.js``'s ``SVALBARD_BOUNDS`` already
+    ``gee/svalbard_crevasse_detection.js``'s ``SVALBARD_BOUNDS`` already
     excludes them from the GEE training pipeline.
 
     Returns

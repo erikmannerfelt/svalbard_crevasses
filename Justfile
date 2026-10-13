@@ -58,6 +58,9 @@ figures: trend-map timeseries-figure per-surge-figures
 
 all: analyze validation-table validation-table-raster figures
 
+labels:
+    python -c "from src import label_audit; label_audit.read_labels(force_redo='self')"
+
 label-audit:
     python -m src.label_audit
 

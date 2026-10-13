@@ -1,7 +1,7 @@
 """Validate the exported ensemble rasters against the hand-digitized labels.
 
 This is a second, independent validation of the same models that
-``scripts/svalbard_crevasse_detection.js`` validates in Earth Engine, and
+``gee/svalbard_crevasse_detection.js`` validates in Earth Engine, and
 it answers a different question. The Earth Engine validation samples the
 10 m embedding at points drawn inside label polygons, with a balanced
 50/50 class ratio. This module scores the **50 m vote-fraction rasters
@@ -128,18 +128,18 @@ def read_glacier_domain(path: Path = settings.SURGE_DATABASE) -> shapely.Geometr
     return shapely.union_all(shapely.make_valid(outlines.geometry.values))
 
 
-def read_labels(path: Path = label_audit.LABELS_FILE) -> gpd.GeoDataFrame:
+def read_labels() -> gpd.GeoDataFrame:
     """Read Svalbard label polygons in the raster CRS, with repaired geometry.
 
     Labels outside `label_audit.SVALBARD_BOUNDS_32633` are dropped; they
     are known leftovers from an earlier pan-Arctic labeling attempt (see
     `label_audit.filter_to_svalbard`).
     """
-    labels = label_audit.read_labels(path)
+    labels = label_audit.read_labels()
     if "big_crevasses" not in labels.columns:
         raise ValueError(
-            f"{path} has no 'big_crevasses' column; re-run scripts/import_crevasse_labels.py "
-            "against a label export that includes it"
+            f"{label_audit.LABELS_SOURCE} has no 'big_crevasses' column; re-export it from "
+            "gee/svalbard_crevasse_labelling.js and run `just labels`"
         )
     in_bounds, _ = label_audit.filter_to_svalbard(labels)
     in_bounds["geometry"] = shapely.make_valid(in_bounds.geometry.values)

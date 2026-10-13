@@ -226,18 +226,44 @@ It differs from `src/tables/validation.py` in ways that matter:
 2024 is the temporal holdout and is the honest number; training years are
 optimistic because each model saw 70% of those polygons.
 
-`big_crevasses` reaches the audit through
-`scripts/import_crevasse_labels.py`, which carries it into
-`shapes/crevasse_area_labels.arrow` when the export provides it. It is
-optional there -- exports predating the flag simply omit it, and
-`src/label_audit.py` does not need it -- but `src/raster_validation.py`
-requires it and says so.
+`big_crevasses` reaches the audit through `label_audit.read_labels`, which
+carries it into the label cache when the export provides it. It is optional
+there -- exports predating the flag simply omit it, and `src/label_audit.py`
+does not need it -- but `src/raster_validation.py` requires it and says so.
+
+## Training Labels And Earth Engine Scripts
+
+The label chain, from primary to derived:
+
+1. `gee/imports.js`: the digitized polygons and big-crevasse points as Earth
+   Engine Imports (`poly_pos_*`, `poly_neg_*`, `big_crevasses_*` per year).
+   This is the authoritative record; it is archived here, not read by the
+   pipeline.
+2. `gee/svalbard_crevasse_labelling.js` tags them (`polyg_id` =
+   `year_class_index`, `crevassed`, `big_crevasses` when a positive polygon
+   touches one of that year's points) and exports one collection to the asset
+   `users/erikmann/crevasse_training_labels`, which
+   `gee/svalbard_crevasse_detection.js` trains on, and to Drive as GeoJSON.
+3. `shapes/crevasse_training_labels.geojson`: that Drive export, committed. It
+   is the primary label file for the offline pipeline. As of 2026-10-13 it
+   matches `gee/imports.js` exactly (757 polygons; ids, classes, flags, and
+   geometry within 1e-9 degrees; three planar rectangles start at a different
+   corner).
+4. `cache/crevasse_area_labels.arrow`: derived by `label_audit.read_labels`
+   on first use, or rebuilt with `just labels` after a new export.
+
+After re-digitizing in Earth Engine, re-run the labelling export, replace the
+GeoJSON, update `gee/imports.js`, and run `just labels`.
+
+`gee/svalbard_crevasse_detection.js` is the authoritative source for the
+method (random forest settings, sampling, export grid). It runs in Earth
+Engine, not in this pipeline.
 
 ## Label Coverage Audit
 
 `src/label_audit.py` and `src/figures/label_map.py` audit the spatial and
 temporal coverage of the hand-digitized crevasse training labels in
-`shapes/crevasse_area_labels.arrow` (separate from the RGI/surge trend
+`shapes/crevasse_training_labels.geojson` (separate from the RGI/surge trend
 pipeline above). Run via:
 
 ```text
@@ -255,7 +281,7 @@ Notes for interpreting and re-running this audit:
 - A meaningful fraction of raw labels (131 of 508 as of 2026-08-24) are known,
   expected remnants of an earlier pan-Arctic labeling attempt, sitting far
   outside Svalbard. `label_audit.filter_to_svalbard` drops them using a
-  bounding box matching `scripts/svalbard_crevasse_detection.js`'s
+  bounding box matching `gee/svalbard_crevasse_detection.js`'s
   `SVALBARD_BOUNDS`. This is intentional filtering, not a bug to fix at the
   source.
 - A few remaining labels (e.g. on Hopen) legitimately fall outside all 9
@@ -284,7 +310,8 @@ artifacts and should not be committed. Do not commit Python bytecode such as
 
 Preserve the `.gitignore` exclusions for `input/`, `output/`, `cache/`,
 `crevasses_svalbard.qgz`, and `scripts/` unless artifact policy is intentionally
-changed.
+changed. `scripts/` holds local helpers only; the Earth Engine scripts live in
+the tracked `gee/` directory.
 
 Do not delete source data, rewrite Git history, or install dependencies as part
 of ordinary analysis or refactoring work.
