@@ -10,7 +10,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from src import mass_balance, raster, settings, surge
+from src import raster, settings, surge
 
 type ForceRedo = Literal[False, "self", "all"]
 
@@ -186,121 +186,6 @@ def regional_trends(data: pd.DataFrame, metadata: pd.DataFrame) -> tuple[pd.Data
         reference_area_km2=("reference_area_km2", "first"),
     )
     return annual, model, summary
-
-
-def common_mode_factors(data: pd.DataFrame) -> pd.DataFrame:
-    """Extract the Svalbard-wide year factor shared by all glaciers.
-
-    A regional snow or melt anomaly changes how much of an unchanged crevasse
-    field is visible, and does so for many glaciers in the same year. Glacier
-    dynamics act on each glacier's own schedule. The component shared between
-    glaciers therefore bounds how much of a trend an exposure effect could
-    explain, without identifying that shared component as exposure: a genuine
-    region-wide dynamic response is equally shared and is not separable here.
-
-    Each glacier-model timeseries is divided by its own mean so that glaciers
-    of different size contribute equally, and the year factor is the median of
-    those ratios across glaciers, taken separately for every model so that the
-    ensemble spread propagates.
-
-    Parameters
-    ----------
-    data
-        Annual model areas, one row per glacier, model, and year, as written to
-        `annual-model.arrow`.
-
-    Returns
-    -------
-    pandas.DataFrame
-        One row per year with the ensemble median factor, its
-        `settings.ENSEMBLE_QUANTILES` model percentiles, and the glacier count entering the median. A factor
-        of 1.0 means the typical glacier showed its own average visible
-        crevasse area that year.
-    """
-    per_model, n_glaciers = common_mode_model_factors(data)
-    return (
-        per_model.groupby("year", as_index=False)
-        .agg(
-            factor=("ratio", "median"),
-            factor_low=("ratio", lambda values: values.quantile(settings.ENSEMBLE_QUANTILES[0])),
-            factor_high=("ratio", lambda values: values.quantile(settings.ENSEMBLE_QUANTILES[1])),
-            n_models=("ratio", "size"),
-        )
-        .assign(n_glaciers=n_glaciers)
-    )
-
-
-def common_mode_model_factors(data: pd.DataFrame, exclude: frozenset[int] = frozenset()) -> tuple[pd.DataFrame, int]:
-    """Per-model Svalbard-wide year factor behind `common_mode_factors`.
-
-    Parameters
-    ----------
-    data
-        Annual area per glacier, model and year, as in `annual-model.arrow`.
-    exclude
-        `anlys_id` values left out of the factor, so that a group of glaciers
-        can be compared with a factor it did not contribute to.
-
-    Returns
-    -------
-    tuple
-        Columns `model_id`, `year` and `ratio` (the median across glaciers of
-        each glacier-model timeseries divided by its own mean), and the number
-        of glaciers entering the median.
-    """
-    frame = data.loc[~data.anlys_id.isin(exclude), ["anlys_id", "model_id", "year", "positive_area_km2"]].copy()
-    frame["mean_area_km2"] = frame.groupby(["anlys_id", "model_id"], sort=False).positive_area_km2.transform("mean")
-    frame = frame[frame.mean_area_km2 >= settings.COMMON_MODE_MIN_MEAN_AREA_KM2]
-    if frame.empty:
-        raise ValueError(
-            f"No glacier exceeds COMMON_MODE_MIN_MEAN_AREA_KM2="
-            f"{settings.COMMON_MODE_MIN_MEAN_AREA_KM2}; cannot normalize."
-        )
-    frame["ratio"] = frame.positive_area_km2 / frame.mean_area_km2
-    per_model = frame.groupby(["model_id", "year"], as_index=False).ratio.median()
-    return per_model, frame.anlys_id.nunique()
-
-
-def common_mode_summary(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Refit glacier trends after dividing out the shared year factor.
-
-    The corrected trends answer one question only: how much of the aggregate
-    signal survives when everything Svalbard did in common is removed. Because
-    the shared component may itself be dynamic, the corrected aggregate is a
-    lower bound on real change and the difference from the raw aggregate is an
-    upper bound on what exposure could explain.
-
-    Returns
-    -------
-    factors
-        The year factors from `common_mode_factors`.
-    comparison
-        One row per model with the raw and corrected aggregate trend and the
-        negative and positive glacier counts under each, so that the ensemble
-        spread of the comparison is available rather than a point estimate.
-    """
-    factors = common_mode_factors(data)
-    frame = data[["anlys_id", "model_id", "year", "positive_area_km2"]].copy()
-    frame["mean_area_km2"] = frame.groupby(["anlys_id", "model_id"], sort=False).positive_area_km2.transform("mean")
-    frame = frame[frame.mean_area_km2 >= settings.COMMON_MODE_MIN_MEAN_AREA_KM2]
-    frame = frame.merge(factors[["year", "factor"]], on="year", validate="many_to_one")
-    frame["corrected_area_km2"] = frame.positive_area_km2 / frame.factor
-    rows = []
-    for model_id, group in frame.groupby("model_id", sort=True):
-        raw = group.groupby("anlys_id", sort=False).apply(_fit, value="positive_area_km2", include_groups=False)
-        corrected = group.groupby("anlys_id", sort=False).apply(_fit, value="corrected_area_km2", include_groups=False)
-        rows.append(
-            {
-                "model_id": model_id,
-                "glacier_count": len(raw),
-                "raw_total_km2_yr": raw.slope.sum(),
-                "corrected_total_km2_yr": corrected.slope.sum(),
-                "raw_negative_count": int((raw.slope < 0).sum()),
-                "corrected_negative_count": int((corrected.slope < 0).sum()),
-                "sign_flip_count": int((np.sign(raw.slope) != np.sign(corrected.slope)).sum()),
-            }
-        )
-    return factors, pd.DataFrame(rows)
 
 
 def representative_glaciers(summaries: pd.DataFrame) -> pd.DataFrame:
@@ -557,21 +442,10 @@ def run() -> dict[str, pd.DataFrame]:
     magnitude = surge_magnitude_ratio(glacier, glacier_model)
     magnitude.to_csv(settings.DATA_DIR / "surge-magnitude-ratio.csv", index=False)
     tables["surge-magnitude-ratio"] = magnitude
-    mass_by_model = mass_balance.compare_by_model_trend_sign(glacier, glacier_model, rgi_metadata)
-    mass_by_model.to_csv(settings.DATA_DIR / "mass-balance-by-model.csv", index=False)
-    tables["mass-balance-by-model"] = mass_by_model
     zones = gpd.read_file(settings.GLACIER_ZONES_FILE)
     zone_summary = surge_zone_summary(glacier, glacier_model, rgi_metadata, zones)
     zone_summary.to_csv(settings.DATA_DIR / "surge-period-trend-zone-summary.csv", index=False)
     tables["surge-period-trend-zone-summary"] = zone_summary
-    mass_change = mass_balance.compare_by_trend_sign(glacier, rgi_metadata)
-    mass_change.to_csv(settings.DATA_DIR / "mass-balance-trend-comparison.csv", index=False)
-    tables["mass-balance-trend-comparison"] = mass_change
-    factors, comparison = common_mode_summary(data)
-    factors.to_csv(settings.DATA_DIR / "common-mode-year-factors.csv", index=False)
-    comparison.to_csv(settings.DATA_DIR / "common-mode-trend-comparison.csv", index=False)
-    tables["common-mode-year-factors"] = factors
-    tables["common-mode-trend-comparison"] = comparison
     return tables
 
 

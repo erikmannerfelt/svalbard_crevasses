@@ -68,7 +68,6 @@ def download(url: str, destination: Path, refresh_download: bool = False) -> Pat
 
 def run(refresh_download: bool = False) -> None:
     """Fetch every external source file the project depends on."""
-    download(settings.MASS_CHANGE_URL, settings.MASS_CHANGE_FILE, refresh_download=refresh_download)
     download(settings.DEM_URL, settings.DEM_FILE, refresh_download=refresh_download)
 
 

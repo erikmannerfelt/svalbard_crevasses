@@ -1,13 +1,11 @@
 """Locate visible crevasse change by elevation on each glacier.
 
-The mass-change comparison in `src/mass_balance.py` asks whether glaciers that
-lose more mass gain more visible crevasses. It cannot test whether gains come
-from crevasses in high accumulation areas being exposed as the firn line rises,
-because that mechanism depends on where on a glacier the change happens, not on
-the glacier-wide mass loss rate. This module bins every model's positive pixels
-by glacier and elevation band so that trends can be located in elevation:
-gains concentrated in upper glacier reaches are consistent with exposure, while
-gains near termini and in ablation areas point to dynamic causes.
+A gain in visible crevasse area can mean new crevasses or existing ones exposed
+as snow and firn disappear, and the two leave different elevation signatures:
+exposure acts where the firn line moves, in upper glacier reaches, while
+dynamic causes act near termini and in ablation areas. This module bins every
+model's positive pixels by glacier and elevation band so that trends can be
+located in elevation.
 
 Two band definitions are used. Absolute bands of `settings.ELEVATION_BAND_M`
 locate change relative to regional snow and firn line heights. Relative bands
@@ -29,7 +27,7 @@ import tqdm
 from rasterio.features import rasterize
 from rasterio.warp import Resampling, reproject
 
-from src import analysis, raster, settings, surge
+from src import raster, settings, surge
 
 type ForceRedo = Literal[False, "self", "all"]
 type BandKind = Literal["absolute", "relative"]
@@ -187,7 +185,7 @@ def _slope(years: np.ndarray, values: np.ndarray) -> float:
 
 
 def trend_groups(summary: pd.DataFrame) -> pd.DataFrame:
-    """Gaining and losing glaciers, defined as in `mass_balance.compare_by_trend_sign`.
+    """Gaining and losing glaciers among those without a recorded surge.
 
     Glaciers with no recorded surge in the analysis window and a trend whose
     ensemble range excludes zero, split by the sign of the median trend.
@@ -284,103 +282,14 @@ def zone_trends(areas: pd.DataFrame, summary: pd.DataFrame, terminus: pd.DataFra
     return pd.concat([overall, by_terminus], ignore_index=True)
 
 
-def _detrend(years: np.ndarray, values: np.ndarray) -> np.ndarray:
-    return values - np.polyval(np.polyfit(years, values, 1), years)
-
-
-def band_year_sensitivity(areas: pd.DataFrame, annual: pd.DataFrame, summary: pd.DataFrame) -> pd.DataFrame:
-    """How strongly each band's year-to-year visible crevasse area follows the regional year factor.
-
-    For each group and band, the summed positive area per model is divided by
-    its mean and linearly detrended, leaving the interannual anomaly. It is
-    compared with the detrended Svalbard-wide year factor of
-    `analysis.common_mode_model_factors`, recomputed without the group's own
-    glaciers so that they are not correlated with themselves. Crevasse fields
-    cannot open and close within a year, so a band that swings with the
-    regional factor has visibility controlled by snow and melt conditions.
-
-    Parameters
-    ----------
-    areas
-        Output of `band_areas`.
-    annual
-        Annual area per glacier, model and year, as in `annual-model.arrow`.
-    summary
-        Ensemble summary per glacier with `surge_period`.
-
-    Returns
-    -------
-    pandas.DataFrame
-        One row per group, band kind and band (absolute bands at or above
-        `settings.SENSITIVITY_POOL_ABOVE_M` pooled) with the ensemble median
-        and bounds of the correlation `r`, the regression slope `beta` of the
-        band anomaly on the factor anomaly (1 means it moves in step), and the
-        anomaly standard deviation `swing_fraction`. `factor_trend_per_yr` is
-        the median least-squares trend of the group-excluded factor itself.
-    """
-    years = np.array(settings.YEARS, dtype=float)
-    groups = trend_groups(summary)
-    pooled_band = settings.SENSITIVITY_POOL_ABOVE_M // settings.ELEVATION_BAND_M
-    low, high = settings.ENSEMBLE_QUANTILES
-    rows = []
-    for group, members in groups.groupby("group"):
-        factors, _ = analysis.common_mode_model_factors(annual, exclude=frozenset(members.anlys_id))
-        factor = factors.pivot(index="model_id", columns="year", values="ratio")[list(settings.YEARS)]
-        factor_trend = float(np.median([_slope(years, row) for row in factor.to_numpy(float)]))
-        factor_anomaly = {
-            model_id: _detrend(years, row) for model_id, row in zip(factor.index, factor.to_numpy(float), strict=True)
-        }
-        data = areas[areas.anlys_id.isin(members.anlys_id)]
-        data = data.assign(band=np.where(data.band_kind == "absolute", np.minimum(data.band, pooled_band), data.band))
-        series = (
-            data.groupby(["band_kind", "band", "model_id", "year"], observed=True)
-            .agg(positive_area_km2=("positive_area_km2", "sum"), band_area_km2=("band_area_km2", "sum"))
-            .reset_index()
-        )
-        for (kind, band), frame in series.groupby(["band_kind", "band"], observed=True):
-            values = frame.pivot(index="model_id", columns="year", values="positive_area_km2")[list(settings.YEARS)]
-            statistics = []
-            for model_id, row in zip(values.index, values.to_numpy(float), strict=True):
-                if row.mean() <= 0:
-                    continue
-                anomaly = _detrend(years, row / row.mean())
-                regional = factor_anomaly[model_id]
-                statistics.append(
-                    (np.corrcoef(anomaly, regional)[0, 1], np.polyfit(regional, anomaly, 1)[0], anomaly.std())
-                )
-            if not statistics:
-                continue
-            r, beta, swing = (pd.Series(column) for column in zip(*statistics, strict=True))
-            rows.append(
-                {
-                    "group": group,
-                    "band_kind": kind,
-                    "band": band,
-                    "band_area_km2": frame.band_area_km2.iloc[0],
-                    "r": r.median(),
-                    "r_low": r.quantile(low),
-                    "r_high": r.quantile(high),
-                    "beta": beta.median(),
-                    "beta_low": beta.quantile(low),
-                    "beta_high": beta.quantile(high),
-                    "swing_fraction": swing.median(),
-                    "factor_trend_per_yr": factor_trend,
-                    "model_count": len(statistics),
-                }
-            )
-    return pd.DataFrame(rows)
-
-
 def run(force_redo: ForceRedo = False) -> dict[str, pd.DataFrame]:
     """Write the elevation-band products from existing analysis products."""
     summary = pd.read_feather(settings.DATA_DIR / "glacier-trends.arrow")
-    annual = pd.read_feather(settings.DATA_DIR / "annual-model.arrow")
     glaciers = surge.read_database()
     areas = band_areas(glaciers, force_redo=force_redo)
     products = {
         "elevation-band-trends": band_trends(areas, summary),
         "elevation-zone-trends": zone_trends(areas, summary, glaciers),
-        "elevation-band-year-sensitivity": band_year_sensitivity(areas, annual, summary),
     }
     result = {}
     for name, table in products.items():
@@ -438,43 +347,6 @@ def test_band_trends_groups_by_ensemble_sign() -> None:
     assert set(result.index) == {"gain", "loss"}
     assert np.isclose(result.loc["gain", "slope_km2_yr"], 1.0)
     assert np.isclose(result.loc["loss", "slope_km2_yr"], -1.0)
-
-
-def test_band_year_sensitivity_detects_in_step_band() -> None:
-    years = np.array(settings.YEARS)
-    swing = np.array([-1, 1] * (len(years) // 2) + [-1] * (len(years) % 2), dtype=float) * 0.2
-    summary = pd.DataFrame(
-        {
-            "anlys_id": [1, 2],
-            "surge_period": ["none", "none"],
-            "slope_km2_yr": [1.0, -1.0],
-            "slope_km2_yr_low": [0.5, -1.5],
-            "slope_km2_yr_high": [1.5, -0.5],
-        }
-    )
-    # Glaciers 9 and 10 are outside both groups and set the regional factor;
-    # glacier 1 swings in step with it, glacier 2 does not swing at all.
-    annual = pd.DataFrame(
-        [
-            {"anlys_id": anlys_id, "model_id": 0, "year": year, "positive_area_km2": value}
-            for anlys_id, values in (
-                (9, 10 * (1 + swing)),
-                (10, 5 * (1 + swing)),
-                (1, 10 * (1 + swing)),
-                (2, np.full(len(years), 10.0)),
-            )
-            for year, value in zip(years, values, strict=True)
-        ]
-    )
-    areas = annual[annual.anlys_id.isin([1, 2])].assign(band_kind="relative", band=5, band_area_km2=20.0)
-
-    with np.errstate(invalid="ignore"):
-        result = band_year_sensitivity(areas, annual, summary).set_index("group")
-
-    assert np.isclose(result.loc["gain", "r"], 1.0)
-    assert np.isclose(result.loc["gain", "beta"], 1.0)
-    assert np.isclose(result.loc["loss", "beta"], 0.0)
-    assert np.isclose(result.loc["loss", "swing_fraction"], 0.0)
 
 
 def test_zone_trends_splits_by_terminus() -> None:

@@ -36,9 +36,6 @@ raster-validation-sentinel1:
 elevation-bands:
     python -m src.elevation
 
-mass-balance-by-model:
-    python -c "from src import mass_balance; mass_balance.run_by_model()"
-
 raster-validation-zones:
     python -c "from src import raster_validation; raster_validation.zone_validation()"
 

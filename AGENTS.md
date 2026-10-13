@@ -153,11 +153,6 @@ Canonical data products are written beneath `output/data/`:
 - `surge-magnitude-ratio.csv`: per-model ratio of mean absolute trend of
   significant surging (`recent` or `pre`) to significant non-surging glaciers,
   summarized as median and `ENSEMBLE_QUANTILES` bounds.
-- `mass-balance-by-model.csv`: the decliner/gainer mass-change comparison
-  repeated within each model, with groups drawn from that model alone
-  (`ols_p05` and `sign_only` rules). The ensemble comparison cannot test
-  per-model ordering because its groups, and hence its medians, are fixed.
-  Rerun alone from existing products with `just mass-balance-by-model`.
 - `elevation-band-trends.csv` (from `src/elevation.py`, `just elevation-bands`):
   visible crevasse trend per elevation band for the significant non-surging
   gaining and losing glaciers, in absolute 100 m bands and in tenths of each
@@ -169,10 +164,6 @@ Canonical data products are written beneath `output/data/`:
   (`ELEVATION_ZONE_SPLIT_M`, `RELATIVE_ZONE_SPLIT_BAND`), overall and by
   terminus type (RGI7 `term_type` 1 = tidewater, otherwise land), with
   per-model shares of each group's trend.
-- `elevation-band-year-sensitivity.csv`: per band, how the detrended
-  interannual anomaly follows the Svalbard-wide year factor recomputed without
-  the group's own glaciers (`r`, `beta`, `swing_fraction`), plus the trend of
-  that group-excluded factor.
 
 The surge-period CSV is an analysis result that may be consumed by maps,
 tables, or future reports. It contains model rate summaries, uncertainty,
@@ -298,39 +289,28 @@ changed.
 Do not delete source data, rewrite Git history, or install dependencies as part
 of ordinary analysis or refactoring work.
 
-## Mass-Balance Test Of The Decreases
+## Archived Analyses
 
-`src/mass_balance.py` tests the visible-crevasse decreases against annual
-per-glacier mass change from the WGMS AMCE release, cited as
-`the_wgms_network_global_2026` for the data and `dussaillant_annual_2025` for
-the method. It shows that gaining glaciers are not the fastest-thinning ones,
-also within size and elevation classes. It does **not** discriminate exposure
-from dynamics in accumulation areas: a large glacier can have average mass loss
-while its firn line rises through crevassed upper reaches. The elevation
-products of `src/elevation.py` address that instead; gains concentrate in
-upper, snow-sensitive bands and losses in low, insensitive ones.
+Three analyses were developed while revising the manuscript and then removed
+so that the submitted code does only what the paper uses. They are complete
+and tested in commit `0b62b5272ab5` ("Add mass-change, elevation and supporting
+analyses") and can be restored from there if a reviewer asks, e.g.
+`git show 0b62b5272ab5:src/mass_balance.py`.
 
-Constraints that matter:
-
-- Restricted to `surge_period == "none"` and to glaciers whose trend sign is
-  significant across the ensemble. Surging glaciers gain and lose crevasses
-  for reasons unrelated to either explanation, and a handful of large surges
-  would otherwise dominate.
-- The series are keyed by **RGI6** outline ids while this project uses RGI7,
-  so glaciers are matched on centroid within
-  `settings.MASS_CHANGE_MATCH_DISTANCE_M`. For Svalbard this is unambiguous
-  (1566 of 1583 matched, median separation a few metres), but it is a match,
-  not an identity, and should be described that way.
-- Three RGI6 outlines carry two WGMS records each; their series are averaged
-  in `read_mass_change` rather than resolved by an arbitrary join.
-- Per-glacier values rest on a single geodetic observation per glacier with
-  annual structure downscaled from regional anomaly series. The per-glacier
-  differences are therefore closer to a multi-year mass loss rate than to a
-  year-resolved one. Do not describe it as observed annual mass balance.
-- The relationship is weak (partial r = 0.16 controlling for glacier size)
-  even though the group difference is highly significant. Report both.
-
-The common-mode functions in `src/analysis.py` remain in the pipeline and
-still write their products. They are no longer used in the manuscript, but
-they answer a reviewer question about regional exposure variability directly,
-so keep them unless asked otherwise.
+- **Mass-change comparison** (`src/mass_balance.py`, WGMS AMCE release fetched
+  by `fetch_inputs`, `settings.MASS_CHANGE_*`). Gaining non-surging glaciers
+  lose less mass than losing ones (median -0.70 vs -0.89 m w.e. yr-1), also
+  within size classes and in all 30 models, but the relationship is weak
+  (partial r = 0.16). It cannot separate exposure from new crevassing in
+  accumulation areas, which is why the elevation analysis replaced it. RGI6
+  series are matched to RGI7 by centroid; values are multi-year rates, not
+  observed annual balance.
+- **Common-mode decomposition** (`analysis.common_mode_factors`,
+  `common_mode_model_factors`, `common_mode_summary`). A Svalbard-wide year
+  factor, the median of each glacier-model timeseries divided by its own mean.
+  It is not identifiable as exposure. Recomputed without the gaining glaciers
+  it has no trend, so the rise it showed came from those glaciers themselves.
+- **Year-to-year sensitivity per elevation band**
+  (`elevation.band_year_sensitivity`). Detrended band anomalies against the
+  group-excluded year factor: 300-800 m bands on gaining glaciers follow it
+  nearly in step (r 0.72-0.83, swing 15-19%), low bands do not.
