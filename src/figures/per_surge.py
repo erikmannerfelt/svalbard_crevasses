@@ -1,4 +1,10 @@
-"""Render configured per-surge glacier figures."""
+"""Render configured per-surge glacier figures.
+
+One figure is rendered per surging glacier of at least 16 km2, combining the
+annual model envelope with masked annual vote-fraction panels. Outputs go to
+``output/figures/per-surge/`` in directories named from the RGI identifier and
+a filesystem-safe glacier name.
+"""
 
 from __future__ import annotations
 

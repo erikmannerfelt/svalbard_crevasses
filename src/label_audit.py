@@ -1,4 +1,9 @@
-"""Audit spatial and temporal coverage of hand-digitized crevasse training labels."""
+"""Audit spatial and temporal coverage of hand-digitized crevasse training labels.
+
+Barentsøya/Edgeøya, Vestfonna and Kvitøya are thin or blank in most target
+years. That matches their low real crevassing and is a standing pattern, not
+a labeling gap to chase.
+"""
 
 from __future__ import annotations
 

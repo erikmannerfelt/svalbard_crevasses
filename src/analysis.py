@@ -1,4 +1,15 @@
-"""Run the fixed Svalbard crevasse trend analysis."""
+"""Run the fixed Svalbard crevasse trend analysis.
+
+Prediction rows are keyed by ``(anlys_id, model_id, year)`` and join the RGI
+surge database through ``anlys_id``. The prediction ``glac_id`` and RGI
+``glims_id`` are independent identity fields that must agree after the join;
+neither substitutes for the other. ``rgi_id`` is the glacier identity
+downstream, since glacier names are not unique in RGI7.
+
+Areas are square metres in the raw annual columns (``*_m2``) and square
+kilometres in derived area and trend columns. Trend rates are km2 per year
+unless a column explicitly says percentage points per year.
+"""
 
 from __future__ import annotations
 
@@ -359,7 +370,27 @@ def _surge_period_summary_cells(
 
 
 def surge_period_summary(summary: pd.DataFrame, model: pd.DataFrame) -> pd.DataFrame:
-    """Summarize model rates and significant-glacier counts in six result cells."""
+    """Summarize model rates and significant-glacier counts in six result cells.
+
+    This is the table written as ``surge-period-trend-summary.csv``. It is an
+    analysis result, and the trend map reads it rather than repeating the
+    classification or aggregation.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per ``surge_period`` (``pre``, ``recent``, ``none``) and
+        ``trend_sign`` (``negative``, ``positive``). ``median_rate_km2_yr``,
+        ``rate_low_km2_yr`` and ``rate_high_km2_yr`` are the median and
+        `settings.ENSEMBLE_QUANTILES` bounds of the per-model summed rate;
+        ``rate_uncertainty_km2_yr`` is the larger distance from the median
+        to either bound. ``significant_glacier_count``, ``glacier_count`` and
+        ``model_count`` follow. The ``historical_termination_*`` columns
+        repeat the counts and the median summed rate for glaciers whose last
+        exactly dated surge ended within `settings.HISTORICAL_TERMINATION_YEARS`
+        before `settings.MIDPOINT_YEAR`, and give that rate's share of the
+        cell's significant-glacier rate.
+    """
     classified = add_surge_periods(summary)
     classified["latest_exact_termination"] = [
         _latest_exact_termination(term, onset)

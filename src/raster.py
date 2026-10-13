@@ -1,4 +1,14 @@
-"""Raster validation, vote-fraction creation, and polygon aggregation."""
+"""Raster validation, vote-fraction creation, and polygon aggregation.
+
+Each source raster ``crevasse_model_probabilities_{year}.tif`` holds 30
+``uint8`` bands named ``prob_m00`` through ``prob_m29``, in ``EPSG:32633`` with
+50 m pixels. A model vote is positive at ``settings.POSITIVE_THRESHOLD_U8``
+(128). Derived vote-fraction rasters hold one ``uint8`` band named
+``vote_fraction`` that decodes as ``value / 255``.
+
+RGI geometries must be in ``EPSG:32633`` before rasterization, sampling, or
+centroid calculations.
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,14 @@
-"""Map-data helpers and the crevasse trend map."""
+"""Map-data helpers and the crevasse trend map.
+
+The map plots RGI glacier trend polygons over the S100 land layer, with recent
+and earlier surge centroids, fixed annotations for the six selected glaciers,
+a compact colorbar and legend, and the uncertainty matrix in the lower right.
+
+The matrix reads ``surge-period-trend-summary.csv``. Cell colors come from the
+median rate; cell text shows the median rate, rate uncertainty, and
+significant-glacier count. Classification and aggregation belong to
+`src.analysis`, not to this renderer.
+"""
 
 from __future__ import annotations
 

@@ -11,9 +11,13 @@ Harcourt et al. (2026).
 structural crevassing. Snow and firn bridging hide real crevasses without
 erasing them, so predicted area and its trend reflect both genuine
 structural change and year-to-year exposure/snow conditions -- never treat a
-predicted-area change as direct proof of new crevasse formation. See
-`docs/data-contracts.md` for the physical mechanism and why it matters for
-interpreting results. Use "visible crevasse(s)"/"visible crevasse extent" in
+predicted-area change as direct proof of new crevasse formation. A second
+gap is timing: labels are digitized from late-summer scenes, when crevasses
+are most exposed, while the embedding is an annual composite, so a correctly
+labeled polygon can carry a snow/firn-dominated signature. This is a likely
+source of false positives in firn-covered terrain. A Svalbard-wide low-snow
+year inflates predicted area on surging and non-surging glaciers alike,
+which is the main confound for the surge-period comparison. Use "visible crevasse(s)"/"visible crevasse extent" in
 new text describing the predicted or trend quantity; "crevasse" alone is
 still fine for the training labels themselves, glacier/zone names, and
 component names (e.g. `svalbard_crevasse_detection.js`).

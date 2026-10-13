@@ -15,9 +15,9 @@ The predicted quantity is *detectable/visible* crevasse extent, not total
 structural crevassing. Snow and firn bridging hide real crevasses without
 erasing them, so a predicted-area change can reflect genuine structural
 change, year-to-year exposure/snow conditions, or both -- it is not on its
-own evidence of new crevasse formation. See
-[`docs/data-contracts.md`](docs/data-contracts.md) for why this matters and
-how it can confound the surge-period comparison specifically.
+own evidence of new crevasse formation. A Svalbard-wide low-snow year
+inflates predicted area on surging and non-surging glaciers alike, which is
+the main confound for the surge-period comparison.
 
 ## Data And Provenance
 
@@ -43,8 +43,8 @@ Expected source files include:
   `crevasse_model_probabilities_2025.tif`
 - `crevasse_rf_ensemble_validation_summary.csv`
 
-The raster and tabular input contracts are documented in
-[`docs/data-contracts.md`](docs/data-contracts.md).
+The raster and tabular input contracts are documented in the module
+docstrings of `src/raster.py`, `src/analysis.py`, and `src/surge.py`.
 
 ## Quick Start
 
@@ -69,8 +69,7 @@ just per-surge-figures
 ```
 
 The analysis must run before the validation table or figures because those
-stages consume its generated products. See
-[`docs/workflow.md`](docs/workflow.md) for the dependency order and checks.
+stages consume its generated products.
 
 ## Repository Layout
 
@@ -87,7 +86,6 @@ src/
   tables/
     validation.py             validation LaTeX table
 tests are colocated in modules   focused tests without the input bundle
-docs/                          workflow, data, and figure documentation
 ```
 
 ## Generated Products

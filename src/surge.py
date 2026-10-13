@@ -1,4 +1,16 @@
-"""Read the RGI surge database and classify surge intervals."""
+"""Read the RGI surge database and classify surge intervals.
+
+`SURGE_OVERRIDES` are provenance data: the project's interpretation of the
+source archive where it disagrees with or refines it. Preserve them unless that
+interpretation is deliberately revised and documented.
+
+The interval rules are:
+
+- ``Ongoing`` has no upper bound.
+- ``Not observed`` is treated as ending ten years after onset.
+- Semicolon-separated onset and termination values are paired by position.
+- Invalid or non-numeric onset values do not create an interval.
+"""
 
 from __future__ import annotations
 

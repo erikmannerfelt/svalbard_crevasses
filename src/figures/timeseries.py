@@ -1,4 +1,15 @@
-"""Crevasse coverage timeseries with Arnesenbreen raster panels."""
+"""Crevasse coverage timeseries with Arnesenbreen raster panels.
+
+The chart uses sampled annual model data linked to RGI7. When several RGI7
+polygons share a configured glacier name, the largest is selected as an
+explicit presentation choice.
+
+The Arnesenbreen panels intentionally use outlines from
+``glacier_outlines_mod.sqlite``, with the fallback outline years in
+`settings.ARNESEN_OUTLINE_YEARS`, rather than the RGI polygon used for the
+chart. The panel border, connecting lines, ice-flow arrow, scale bar, and
+vote-fraction colorbar are deliberate parts of the figure.
+"""
 
 from __future__ import annotations
 
