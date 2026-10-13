@@ -10,3 +10,5 @@ output.old*
 *_old2.*
 *_old3.*
 tmp/
+.env
+shapes/crevasse_area_labels.arrow
