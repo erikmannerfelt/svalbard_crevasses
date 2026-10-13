@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Final
+
 import geopandas as gpd
 import matplotlib.patheffects
 import matplotlib.pyplot as plt
@@ -11,6 +13,11 @@ from matplotlib.colors import TwoSlopeNorm
 from matplotlib.patches import Rectangle
 
 from src import settings, surge
+
+# The land and glacier layers are ~1600 polygons and dominate the vector PDF
+# (12 MB before, and the same cause as in `figures.label_map`). Rasterizing
+# only those keeps the markers, annotations, colorbar and matrix as vectors.
+BASEMAP_DPI: Final = 500
 
 GLACIER_ANNOTATIONS = {
     "Recherchebreen": {"xy": [500000, 8592000], "xytext": [460000, 8592000]},
@@ -26,13 +33,13 @@ def classify_surge_periods(glaciers: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Classify surges after the dataset midpoint and in the prior window."""
     result = glaciers.copy()
     recent = [
-        surge.surge_overlaps(term, onset, settings.MIDPOINT_YEAR - 1, settings.END_YEAR)
+        surge.surge_overlaps(term, onset, settings.RECENT_SURGE_START, settings.END_YEAR)
         for term, onset in zip(result["S_Term"], result["S_Onset"], strict=True)
     ]
     result["surge_after_midpoint"] = recent
     result["surge_before_midpoint"] = [
         not after
-        and surge.surge_overlaps(term, onset, settings.YEARS[0] - settings.PRE_SURGE_YEARS, settings.MIDPOINT_YEAR)
+        and surge.surge_overlaps(term, onset, settings.YEARS[0] - settings.PRE_SURGE_YEARS, settings.EARLIER_SURGE_END)
         for after, term, onset in zip(recent, result["S_Term"], result["S_Onset"], strict=True)
     ]
     return result
@@ -46,8 +53,8 @@ def add_agreement_matrix(ax: object, glaciers: gpd.GeoDataFrame, summary: pd.Dat
     glaciers.loc[glaciers["slope_km2_yr_low"] > 0, "trend_class"] = "positive"
     glaciers["trend_direction"] = glaciers["slope_km2_yr"].ge(0).map({True: "positive", False: "negative"})
     labels = {
-        "pre": (f"Surges\n{settings.YEARS[0] - settings.PRE_SURGE_YEARS}–{settings.MIDPOINT_YEAR - 1}"),
-        "recent": f"Surges\n{settings.MIDPOINT_YEAR}–{settings.END_YEAR}",
+        "pre": (f"Surges\n{settings.YEARS[0] - settings.PRE_SURGE_YEARS}–{settings.EARLIER_SURGE_END}"),
+        "recent": f"Surges\n{settings.RECENT_SURGE_START}–{settings.END_YEAR}",
         "none": (f"No recorded\nsurge\n{settings.YEARS[0] - settings.PRE_SURGE_YEARS}–{settings.END_YEAR}"),
     }
     periods = ["pre", "recent", "none"]
@@ -142,7 +149,7 @@ def plot() -> None:
     fig, ax = plt.subplots(figsize=(8, 8))
     ax.set_ylim(8480000, 8970000)
     ax.set_xlim(400000, 848000)
-    land.plot(ax=ax, color="#e6e6e1", edgecolor="#aaaaa5", linewidth=0.25)
+    land.plot(ax=ax, color="#e6e6e1", edgecolor="#aaaaa5", linewidth=0.25, rasterized=True)
     cmap = "PuOr_r"
     norm = TwoSlopeNorm(vmin=-6, vcenter=0, vmax=6)
     glaciers.plot(
@@ -153,6 +160,7 @@ def plot() -> None:
         linewidth=0.08,
         edgecolor="#555555",
         missing_kwds={"color": "none", "edgecolor": "none"},
+        rasterized=True,
     )
     glaciers[glaciers["surge_after_midpoint"]].geometry.centroid.plot(
         ax=ax,
@@ -162,7 +170,7 @@ def plot() -> None:
         edgecolor="#222222",
         linewidth=0.5,
         zorder=3,
-        label=f"Surges {settings.MIDPOINT_YEAR}–{settings.END_YEAR}",
+        label=f"Surges {settings.RECENT_SURGE_START}–{settings.END_YEAR}",
     )
     glaciers[glaciers["surge_before_midpoint"]].geometry.centroid.plot(
         ax=ax,
@@ -172,7 +180,7 @@ def plot() -> None:
         edgecolor="#222222",
         linewidth=0.5,
         zorder=3,
-        label=f"Surges {settings.YEARS[0] - settings.PRE_SURGE_YEARS}–{settings.MIDPOINT_YEAR - 1}",
+        label=f"Surges {settings.YEARS[0] - settings.PRE_SURGE_YEARS}–{settings.EARLIER_SURGE_END}",
     )
     for glacier_name in settings.SELECTED_GLACIERS:
         ax.annotate(
@@ -183,7 +191,7 @@ def plot() -> None:
     scalar = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
     scalar.set_array([])
     colorbar_ax = ax.inset_axes([0.87, 0.52, 0.04, 0.32])
-    fig.colorbar(scalar, cax=colorbar_ax, label="Crevasse area trend (km² year$^{-1}$)")
+    fig.colorbar(scalar, cax=colorbar_ax, label="Visible crevasse area trend (km² year$^{-1}$)")
     ax.set_axis_off()
     ax.legend(loc="lower left", bbox_to_anchor=(0.02, 0.02), fontsize=8, framealpha=0.9)
     agreement_ax = ax.inset_axes([0.65, 0, 0.35, 0.60])
@@ -191,7 +199,7 @@ def plot() -> None:
     output_path = settings.FIGURE_DIR / "trend-map.png"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=400, bbox_inches="tight")
-    fig.savefig(output_path.with_suffix(".pdf"), bbox_inches="tight")
+    fig.savefig(output_path.with_suffix(".pdf"), bbox_inches="tight", dpi=BASEMAP_DPI)
     plt.close(fig)
 
 

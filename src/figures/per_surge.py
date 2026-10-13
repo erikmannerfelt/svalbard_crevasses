@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import rasterio.transform
+import tqdm
 
 from src import raster, settings, surge
 
@@ -22,7 +23,7 @@ def slugify(name: str, rgi_id: str) -> str:
 
 def select_glaciers(trends: pd.DataFrame) -> pd.DataFrame:
     """Select all configured surging glaciers above the area threshold."""
-    selected = trends[(trends.surging) & (trends.area_km2 >= 50)].copy()
+    selected = trends[(trends.surging) & (trends.area_km2 >= 16)].copy()
     if selected.empty:
         raise ValueError("No surging glaciers meet the configured area threshold")
     return selected
@@ -33,7 +34,9 @@ def render(glacier: pd.Series, data: pd.DataFrame, geometry: object) -> None:
     output_dir = settings.FIGURE_DIR / "per-surge" / slugify(glacier.glac_name, glacier.rgi_id)
     output_dir.mkdir(parents=True, exist_ok=True)
     annual = data.groupby("year").crevassed_area_km2.agg(
-        median="median", low=lambda x: x.quantile(0.025), high=lambda x: x.quantile(0.975)
+        median="median",
+        low=lambda x: x.quantile(settings.ENSEMBLE_QUANTILES[0]),
+        high=lambda x: x.quantile(settings.ENSEMBLE_QUANTILES[1]),
     )
     fig = plt.figure(figsize=(9, 8))
     grid = fig.add_gridspec(4, 3, height_ratios=[1.05, 1, 1, 1])
@@ -76,7 +79,8 @@ def run() -> None:
     trends = pd.read_feather(settings.DATA_DIR / "glacier-trends.arrow")
     annual = pd.read_feather(settings.DATA_DIR / "annual-model.arrow")
     polygons = surge.read_database().to_crs(settings.RASTER_CRS)
-    for _, glacier in select_glaciers(trends).iterrows():
+    glaciers = select_glaciers(trends)
+    for _, glacier in tqdm.tqdm(glaciers.iterrows(), total=glaciers.shape[0]):
         matches = polygons[polygons.rgi_id == glacier.rgi_id]
         if len(matches) != 1:
             raise ValueError(f"Expected one RGI polygon for {glacier.rgi_id}, found {len(matches)}")

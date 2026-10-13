@@ -1,9 +1,9 @@
 # Data Contracts
 
-## Framing: Exposed Vs. Structural Crevassing
+## Framing: Visible Vs. Structural Crevassing
 
 The prediction rasters and everything derived from them (vote fractions,
-annual/trend products, figures) measure *detectable/exposed* crevasse
+annual/trend products, figures) measure *detectable/visible* crevasse
 extent, not total structural crevassing. Two things drive the gap:
 
 - **Snow/firn bridging.** A structurally real crevasse can be invisible to
@@ -30,7 +30,7 @@ is built around (`surge-period-trend-summary.csv`): a Svalbard-wide
 low-snow year would inflate predicted area across surging and non-surging
 glaciers alike, which could dilute or fabricate an apparent trend
 independent of surge dynamics. Treat predicted-area results as evidence
-about *exposed* crevassing, and prefer "exposed crevasse(s)"/"exposed
+about *visible* crevassing, and prefer "visible crevasse(s)"/"visible
 crevasse extent" over bare "crevasse(s)" when describing the predicted or
 trend quantity in new writing.
 

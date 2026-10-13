@@ -96,7 +96,11 @@ def make_figure(values: pd.DataFrame, arnesen_maps: dict[int, tuple], output_pat
         subset = values[values.glac_name == glacier]
         annual = (
             subset.groupby("year")
-            .crevasse_area_km2.agg(median="median", low=lambda x: x.quantile(0.025), high=lambda x: x.quantile(0.975))
+            .crevasse_area_km2.agg(
+                median="median",
+                low=lambda x: x.quantile(settings.ENSEMBLE_QUANTILES[0]),
+                high=lambda x: x.quantile(settings.ENSEMBLE_QUANTILES[1]),
+            )
             .reset_index()
         )
         ax.fill_between(annual.year, annual["low"], annual["high"], color="#d98c8c", alpha=0.35, linewidth=0)

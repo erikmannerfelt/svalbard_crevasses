@@ -15,6 +15,9 @@ test:
 check: lint test
     python -B -m compileall -q src
 
+fetch-inputs:
+    python -m src.fetch_inputs
+
 analyze:
     python -m src.analysis
 
@@ -23,6 +26,24 @@ validation-table:
 
 validation-table-holdout2024:
     python -m src.tables.validation_holdout2024
+
+raster-validation:
+    python -m src.raster_validation
+
+raster-validation-sentinel1:
+    python -c "from src import raster_validation; raster_validation.run_sentinel1()"
+
+elevation-bands:
+    python -m src.elevation
+
+mass-balance-by-model:
+    python -c "from src import mass_balance; mass_balance.run_by_model()"
+
+raster-validation-zones:
+    python -c "from src import raster_validation; raster_validation.zone_validation()"
+
+validation-table-raster: raster-validation
+    python -m src.tables.validation_raster
 
 trend-map:
     python -m src.figures.trend_map
@@ -38,7 +59,7 @@ sentinel-examples-figure:
 
 figures: trend-map timeseries-figure per-surge-figures
 
-all: analyze validation-table figures
+all: analyze validation-table validation-table-raster figures
 
 label-audit:
     python -m src.label_audit

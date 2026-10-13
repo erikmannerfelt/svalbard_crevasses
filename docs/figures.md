@@ -7,7 +7,7 @@ already exist in `output/data/`.
 ## Trend Map
 
 `src/figures/trend_map.py` renders the RGI glacier trend polygons over the S100
-land layer. The plotted trend is in *exposed* crevasse area, not total
+land layer. The plotted trend is in *visible* crevasse area, not total
 structural crevassing -- see "Framing" in `docs/data-contracts.md` before
 interpreting the map, especially the "no recorded surge" matrix cell. It
 also shows:

@@ -62,9 +62,29 @@ def render_table(rows: list[dict[str, str]]) -> str:
     return "\n".join(lines)
 
 
+def select_stratum(rows: list[dict[str, str]], stratum: str) -> list[dict[str, str]]:
+    """Keep one row per model, dropping the positive-class strata.
+
+    Runs of `svalbard_crevasse_detection.js` from 2026-08-27 onward emit
+    three rows per model -- `all`, `big_crevasses`, `small_crevasses` --
+    sharing one sampled test set. The renderer assumes one row per model,
+    so a stratum has to be chosen before rendering. CSVs produced before
+    that change have no `stratum` column and are passed through unchanged.
+    """
+    if not rows or "stratum" not in rows[0]:
+        return rows
+
+    selected = [row for row in rows if row["stratum"] == stratum]
+    if not selected:
+        available = sorted({row["stratum"] for row in rows})
+        raise ValueError(f"No rows for stratum {stratum!r}; available: {', '.join(available)}")
+    return selected
+
+
 def run(
     input_path: Path = settings.INPUT_DIR / "crevasse_rf_ensemble_validation_summary.csv",
     output_path: Path = settings.TABLE_DIR / "validation.tex",
+    stratum: str = "all",
 ) -> list[dict[str, str]]:
     """Read validation data and write the corresponding LaTeX table."""
     with input_path.open(newline="") as file:
@@ -77,6 +97,7 @@ def run(
     if missing:
         raise ValueError(f"Missing required columns: {', '.join(sorted(missing))}")
 
+    rows = select_stratum(rows, stratum)
     rows.sort(key=lambda row: int(row["model_id"]))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(render_table(rows))
@@ -90,3 +111,23 @@ if __name__ == "__main__":
 def test_validation_formatting() -> None:
     assert format_percentage(0.25) == "25\\%"
     assert latex_escape("a_b & c") == r"a\_b \& c"
+
+
+def test_select_stratum_passes_through_legacy_rows() -> None:
+    legacy = [{"model_id": "0", "accuracy": "0.9"}]
+    assert select_stratum(legacy, "all") == legacy
+
+
+def test_select_stratum_filters_and_rejects_unknown() -> None:
+    rows = [
+        {"model_id": "0", "stratum": "all"},
+        {"model_id": "0", "stratum": "big_crevasses"},
+    ]
+    assert select_stratum(rows, "big_crevasses") == [rows[1]]
+
+    try:
+        select_stratum(rows, "nonexistent")
+    except ValueError as error:
+        assert "available" in str(error)
+    else:
+        raise AssertionError("expected ValueError for an unknown stratum")
