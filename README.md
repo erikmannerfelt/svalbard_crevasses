@@ -14,8 +14,8 @@ or no recorded surge activity.
 The predicted quantity is *detectable/visible* crevasse extent, not total
 structural crevassing. Snow and firn bridging hide real crevasses without
 erasing them, so a predicted-area change can reflect genuine structural
-change, year-to-year exposure/snow conditions, or both -- it is not on its
-own evidence of new crevasse formation. A Svalbard-wide low-snow year
+change, year-to-year exposure/snow conditions, or both (it is not on its
+own evidence of new crevasse formation). A Svalbard-wide low-snow year
 inflates predicted area on surging and non-surging glaciers alike, which is
 the main confound for the surge-period comparison.
 
@@ -30,11 +30,8 @@ The surge database used by this project is described in:
 > *Earth-Science Reviews*, 275, 105410.
 > [https://doi.org/10.1016/j.earscirev.2026.105410](https://doi.org/10.1016/j.earscirev.2026.105410)
 
-The project is offline-first. The required source bundle must already be
-available in `input/`. The workflow never downloads data or depends on a
-network connection.
 
-Expected source files include:
+Expected source files in `input/` include:
 
 - `RGI_V7_Surge_Database.zip`
 - `glacier_outlines_mod.sqlite`
@@ -42,9 +39,6 @@ Expected source files include:
 - `crevasse_model_probabilities_2017.tif` through
   `crevasse_model_probabilities_2025.tif`
 - `crevasse_rf_ensemble_validation_summary.csv`
-
-The raster and tabular input contracts are documented in the module
-docstrings of `src/raster.py`, `src/analysis.py`, and `src/surge.py`.
 
 ## Quick Start
 
