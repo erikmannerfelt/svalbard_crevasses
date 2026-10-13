@@ -14,6 +14,7 @@ DATA_DIR: Final = OUTPUT_DIR / "data"
 RASTER_DIR: Final = OUTPUT_DIR / "rasters" / "vote-fractions"
 FIGURE_DIR: Final = OUTPUT_DIR / "figures"
 TABLE_DIR: Final = OUTPUT_DIR / "tables"
+PUBLICATION_DIR: Final = OUTPUT_DIR / "publication"
 GLACIER_ZONES_FILE: Final = ROOT / "shapes" / "glacier_zones.geojson"
 
 YEARS: Final = tuple(range(2017, 2026))

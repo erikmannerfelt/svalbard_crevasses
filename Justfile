@@ -54,6 +54,9 @@ per-surge-figures:
 sentinel-examples-figure:
     python -m src.figures.sentinel_examples
 
+publication:
+    python -m src.publication
+
 figures: trend-map timeseries-figure per-surge-figures
 
 all: analyze validation-table validation-table-raster figures
